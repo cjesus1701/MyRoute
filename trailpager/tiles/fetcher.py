@@ -40,16 +40,16 @@ def add_basemap(
 
 
 def zoom_for_scale(scale: int, dpi: int = 300) -> int:
-    """Return the web-tile zoom level whose pixel resolution matches the print scale.
+    """Return the web-tile zoom level that gives readable labels at the print scale.
 
-    Derivation: web tiles have a native resolution of 156,543 m/px at zoom 0
-    (equator, Web Mercator).  For a printed map at *scale* and *dpi*, each
-    pixel represents (scale × 0.0254 / dpi) ground metres.  Setting the two
-    equal and solving for Z gives the formula below.
+    Pixel-perfect matching (zoom 16 at 1:24 000/300 DPI) replicates the original
+    USGS 7.5-minute quad text — typically 3–5 pt on paper, which is too small to
+    read in the field.  Backing off by two zoom levels makes each tile span ~2 print
+    inches, scaling the labels up ~4× to roughly 12–14 pt while keeping enough
+    contour and trail detail for navigation.
 
-    At 1:24,000 / 300 DPI this returns 16, which is the USGS 7.5-minute quad
-    level — the zoom at which trail names, contour labels, and road names are
-    all legible.
+    Typical results: 1:12 000 → 15, 1:24 000 → 14, 1:50 000 → 13, 1:100 000 → 12.
     """
-    zoom = round(math.log2(156_543.04 * dpi / (scale * 0.0254)))
+    pixel_perfect = round(math.log2(156_543.04 * dpi / (scale * 0.0254)))
+    zoom = pixel_perfect - 2
     return max(10, min(zoom, 18))
