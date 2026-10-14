@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import io
+import json
 import tempfile
 import uuid
 import warnings
 from pathlib import Path
 
+import requests as _requests
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -39,6 +41,11 @@ class PreviewRequest(BaseModel):
     overlap_m: float = 500.0
     margin_m: float = 200.0
     utm_zone: int = 17
+
+
+class PointsRequest(BaseModel):
+    start: list[float]   # [lat, lon]
+    end: list[float]
 
 
 class GenerateRequest(BaseModel):
@@ -308,4 +315,111 @@ async def generate_pdf(req: GenerateRequest) -> StreamingResponse:
         buf,
         media_type="application/pdf",
         headers={"Content-Disposition": 'attachment; filename="trail_map.pdf"'},
+    )
+
+
+_OSRM_URL = "https://router.project-osrm.org/route/v1/foot/{lon1},{lat1};{lon2},{lat2}?geometries=geojson&overview=full"
+
+
+@app.post("/api/route-from-points")
+async def route_from_points(req: PointsRequest) -> JSONResponse:
+    """Generate a walking/hiking route between two coordinates via OSRM."""
+    start_lat, start_lon = req.start
+    end_lat,   end_lon   = req.end
+
+    url = _OSRM_URL.format(
+        lon1=start_lon, lat1=start_lat,
+        lon2=end_lon,   lat2=end_lat,
+    )
+    try:
+        resp = _requests.get(url, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        raise HTTPException(502, f"Routing service unavailable: {exc}")
+
+    if data.get("code") != "Ok" or not data.get("routes"):
+        raise HTTPException(422, "No route found between these points. Try moving the markers closer to a trail.")
+
+    route = data["routes"][0]
+    coords = route["geometry"]["coordinates"]   # [[lon, lat], ...]
+    distance_m = route["distance"]
+
+    # Write as a GeoJSON FeatureCollection so load_route can read it
+    geojson_fc = {
+        "type": "FeatureCollection",
+        "features": [{
+            "type": "Feature",
+            "geometry": {"type": "LineString", "coordinates": coords},
+            "properties": {"source": "osrm", "distance_m": round(distance_m, 1)},
+        }],
+    }
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".geojson", mode="w")
+    json.dump(geojson_fc, tmp)
+    tmp.close()
+
+    route_id = str(uuid.uuid4())
+    _routes[route_id] = {"path": Path(tmp.name), "source": "generated"}
+
+    bounds = [
+        min(c[0] for c in coords), min(c[1] for c in coords),
+        max(c[0] for c in coords), max(c[1] for c in coords),
+    ]
+    geojson_feature = {
+        "type": "Feature",
+        "geometry": {"type": "LineString", "coordinates": coords},
+        "properties": {},
+    }
+    return JSONResponse({
+        "route_id": route_id,
+        "geojson": geojson_feature,
+        "bounds": bounds,
+        "default_start": req.start,
+        "default_end":   req.end,
+        "distance_m": round(distance_m, 1),
+        "warnings": [],
+    })
+
+
+@app.get("/api/export/{route_id}/geojson")
+async def export_geojson(route_id: str) -> StreamingResponse:
+    """Download the stored route as GeoJSON."""
+    entry = _routes.get(route_id)
+    if not entry:
+        raise HTTPException(404, "Route not found — re-upload or regenerate.")
+    content = entry["path"].read_bytes()
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/geo+json",
+        headers={"Content-Disposition": 'attachment; filename="route.geojson"'},
+    )
+
+
+@app.get("/api/export/{route_id}/gpx")
+async def export_gpx(route_id: str) -> StreamingResponse:
+    """Download the stored route as GPX."""
+    entry = _routes.get(route_id)
+    if not entry:
+        raise HTTPException(404, "Route not found — re-upload or regenerate.")
+
+    from trailpager.route.loader import load_route
+    with warnings.catch_warnings(record=True):
+        warnings.simplefilter("always")
+        route_data = load_route(entry["path"])
+
+    coords = list(route_data.line.coords)  # (lon, lat)
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<gpx version="1.1" creator="TrailPager" xmlns="http://www.topografix.com/GPX/1/1">',
+        "  <trk><name>Trail Route</name><trkseg>",
+    ]
+    for lon, lat in coords:
+        lines.append(f'    <trkpt lat="{lat:.6f}" lon="{lon:.6f}"></trkpt>')
+    lines += ["  </trkseg></trk>", "</gpx>"]
+
+    content = "\n".join(lines).encode("utf-8")
+    return StreamingResponse(
+        io.BytesIO(content),
+        media_type="application/gpx+xml",
+        headers={"Content-Disposition": 'attachment; filename="route.gpx"'},
     )

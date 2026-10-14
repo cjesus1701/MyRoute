@@ -63,7 +63,7 @@ html, body { height: 100%; overflow: hidden; font-family: system-ui, sans-serif;
 #drop-zone {
   border: 1.5px dashed var(--border);
   border-radius: 6px;
-  padding: 18px 12px;
+  padding: 14px 12px;
   text-align: center;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
@@ -72,15 +72,62 @@ html, body { height: 100%; overflow: hidden; font-family: system-ui, sans-serif;
   border-color: var(--accent);
   background: rgba(192,57,43,0.06);
 }
-#drop-zone svg { width: 28px; height: 28px; color: var(--text-dim); margin-bottom: 8px; }
-#drop-zone p { color: var(--text-dim); line-height: 1.5; font-size: 12px; }
+#drop-zone svg { width: 24px; height: 24px; color: var(--text-dim); margin-bottom: 6px; }
+#drop-zone p { color: var(--text-dim); line-height: 1.6; font-size: 12px; }
 .link { color: var(--accent); cursor: pointer; text-decoration: underline; }
+.opt-badge {
+  display: inline-block; margin-left: 4px;
+  font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;
+  background: var(--bg3); color: var(--text-dim); border-radius: 3px; padding: 1px 5px;
+  vertical-align: middle;
+}
 
-/* ── Route info ─────────────────────────────────────────── */
-.info-row { display: flex; align-items: center; gap: 8px; }
+/* ── Or divider ─────────────────────────────────────────── */
+.or-divider {
+  display: flex; align-items: center; gap: 8px;
+  margin: 10px 0 8px;
+  color: var(--text-dim); font-size: 11px;
+}
+.or-divider::before, .or-divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--border);
+}
+
+/* ── Map hint ───────────────────────────────────────────── */
+.map-hint {
+  font-size: 11.5px; color: var(--text-dim); line-height: 1.6;
+  padding: 2px 0;
+}
+.map-hint strong { color: var(--text); }
+
+/* ── Route generating spinner ───────────────────────────── */
+.gen-route-spinner {
+  display: flex; align-items: center; gap: 9px;
+  padding: 10px 2px; color: var(--text-dim); font-size: 12px;
+}
+.spinner-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Route loaded ───────────────────────────────────────── */
+.info-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 #route-filename { flex: 1; font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .btn-icon { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 3px; }
 .btn-icon:hover { color: var(--text); background: var(--bg3); }
+
+.export-row { display: flex; gap: 6px; }
+.btn-secondary {
+  flex: 1; padding: 6px 8px;
+  background: var(--bg3); color: var(--text-dim);
+  border: 1px solid var(--border); border-radius: 4px;
+  font-size: 12px; font-weight: 500; cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.btn-secondary:hover { color: var(--text); border-color: var(--text-dim); }
 
 /* ── Coord rows ─────────────────────────────────────────── */
 .coord-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
@@ -101,6 +148,7 @@ html, body { height: 100%; overflow: hidden; font-family: system-ui, sans-serif;
 .btn-pick:hover { border-color: var(--accent); color: var(--accent); }
 .btn-pick.active { border-color: var(--accent); color: var(--accent); background: rgba(192,57,43,0.12); }
 
+/* ── Preview feedback ───────────────────────────────────── */
 .preview-spinner {
   margin-top: 8px; font-size: 11px; color: var(--text-dim); font-style: italic;
   animation: pulse 1s ease-in-out infinite;
@@ -113,6 +161,14 @@ html, body { height: 100%; overflow: hidden; font-family: system-ui, sans-serif;
   font-size: 12px; color: var(--text-dim);
 }
 #preview-info span { background: var(--bg3); border-radius: 4px; padding: 3px 8px; }
+
+/* ── Warnings ───────────────────────────────────────────── */
+.warning-box {
+  margin-top: 8px; padding: 8px 10px;
+  background: rgba(184, 134, 11, 0.12);
+  border: 1px solid rgba(184, 134, 11, 0.35);
+  border-radius: 4px; font-size: 11px; color: #d4a017; line-height: 1.5;
+}
 
 /* ── Fields ─────────────────────────────────────────────── */
 .field-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
@@ -134,14 +190,6 @@ html, body { height: 100%; overflow: hidden; font-family: system-ui, sans-serif;
 .toggle-row:hover { color: var(--text); }
 .toggle-row input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
 
-/* ── Warnings ───────────────────────────────────────────── */
-.warning-box {
-  margin-top: 8px; padding: 8px 10px;
-  background: rgba(184, 134, 11, 0.12);
-  border: 1px solid rgba(184, 134, 11, 0.35);
-  border-radius: 4px; font-size: 11px; color: #d4a017; line-height: 1.5;
-}
-
 /* ── Generate button ────────────────────────────────────── */
 .btn-primary {
   width: 100%; padding: 10px;
@@ -157,8 +205,7 @@ html, body { height: 100%; overflow: hidden; font-family: system-ui, sans-serif;
   margin-top: 8px; height: 3px; background: var(--bg3); border-radius: 2px; overflow: hidden;
 }
 #gen-progress-bar {
-  height: 100%; width: 0%; background: var(--accent);
-  transition: width 0.4s ease;
+  height: 100%; background: var(--accent);
   animation: indeterminate 1.4s ease-in-out infinite;
 }
 @keyframes indeterminate {
