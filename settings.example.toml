@@ -1,6 +1,6 @@
 [route]
 file = "data/at_va_south.gpx"
-start = [37.9123, -79.0891]   # Reids Gap — [lat, lon] WGS-84
+start = [37.9013, -78.9852]   # Reeds Gap — SR-664 AT crossing [lat, lon] WGS-84
 end   = [38.0319, -78.8731]   # Rockfish Gap
 
 [map]
