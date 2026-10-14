@@ -8,6 +8,7 @@ from matplotlib.figure import Figure
 from trailpager.config import Settings
 from trailpager.pagination.paginator import PageFrame
 from trailpager.render.cartography import (
+    draw_boundaries,
     draw_mile_markers,
     draw_north_arrow,
     draw_route,
@@ -23,6 +24,9 @@ def render_detail_page(
     settings: Settings,
     total_pages: int,
     cache_dir: Path | None = None,
+    boundaries: list | None = None,
+    boundary_colors: list[str] | None = None,
+    boundary_labels: list[str] | None = None,
 ) -> Figure:
     w_in, h_in = settings.page_size_inches
     fig, ax = plt.subplots(figsize=(w_in, h_in))
@@ -39,6 +43,14 @@ def render_detail_page(
             crs=f"EPSG:{settings.epsg}",
             zoom=zoom_for_scale(settings.map.scale),
             cache_dir=cache_dir,
+        )
+
+    if boundaries and (settings.layers.usfs_boundary or settings.layers.nps_boundary):
+        draw_boundaries(
+            ax, boundaries,
+            target_epsg=settings.epsg,
+            colors=boundary_colors,
+            labels=boundary_labels,
         )
 
     draw_route(ax, route_proj)

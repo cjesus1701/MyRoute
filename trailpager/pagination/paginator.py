@@ -39,8 +39,10 @@ def paginate(
     while current_start_dist < total_length:
         cx, cy = _interpolate_at_dist(coords, cum_dists, current_start_dist)
 
-        # Place the route entry point near the left edge of the frame
-        minx = cx - margin_m
+        # Place the route entry point 2 × margin from the left edge.
+        # The extra buffer absorbs brief westward excursions (e.g. switchbacks)
+        # without terminating the page prematurely.
+        minx = cx - 2 * margin_m
         miny = cy - page_height_m / 2
         maxx = minx + page_width_m
         maxy = miny + page_height_m

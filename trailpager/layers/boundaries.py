@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import warnings
 from pathlib import Path
 
 import geopandas as gpd
@@ -62,3 +63,44 @@ def fetch_nps_boundary(
     cache_dir: Path,
 ) -> gpd.GeoDataFrame:
     return _fetch_arcgis_boundary(NPS_REST_URL, bbox, cache_dir, "nps")
+
+
+_COLORS = ["#2ca02c", "#1f77b4"]
+_LABELS = ["George Washington NF", "National Park / BRP"]
+
+
+def fetch_boundary_layers(
+    settings,
+    route_bounds_wgs84: tuple[float, float, float, float],
+    cache_dir: Path,
+) -> tuple[list[gpd.GeoDataFrame], list[str], list[str]]:
+    """Fetch USFS and NPS boundary layers for the route bbox.
+
+    Returns (gdfs, colors, labels) — one entry per layer.  A layer that
+    fails is represented by an empty GeoDataFrame so downstream callers
+    always receive a fixed-length list.
+    """
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    minx, miny, maxx, maxy = route_bounds_wgs84
+    # Add a 10 % buffer so boundaries are visible near the edges of page 1 / last page
+    dx = (maxx - minx) * 0.10
+    dy = (maxy - miny) * 0.10
+    bbox = (minx - dx, miny - dy, maxx + dx, maxy + dy)
+
+    gdfs: list[gpd.GeoDataFrame] = []
+
+    def _safe_fetch(fetcher, name: str) -> gpd.GeoDataFrame:
+        try:
+            gdf = fetcher(bbox, cache_dir)
+            return gdf
+        except Exception as exc:
+            warnings.warn(f"{name} boundary unavailable: {exc}", stacklevel=3)
+            return gpd.GeoDataFrame()
+
+    if settings.layers.usfs_boundary:
+        gdfs.append(_safe_fetch(fetch_usfs_boundary, "USFS"))
+    if settings.layers.nps_boundary:
+        gdfs.append(_safe_fetch(fetch_nps_boundary, "NPS"))
+
+    n = len(gdfs)
+    return gdfs, _COLORS[:n], _LABELS[:n]
