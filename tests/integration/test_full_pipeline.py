@@ -79,10 +79,15 @@ def test_full_coverage(at_settings):
 
 
 def test_pages_render_to_pdf(at_settings, tmp_path):
-    """Rendering all pages should produce a valid multi-page PDF."""
+    """Full pipeline (overview + detail + waypoint table + disclaimer) produces a valid PDF."""
+    import datetime
+
+    from trailpager.layers.waypoints import build_waypoints
     from trailpager.pagination.paginator import paginate
+    from trailpager.render.disclaimer import render_disclaimer_page
     from trailpager.render.overview import render_overview_page
     from trailpager.render.page import render_detail_page
+    from trailpager.render.waypoint_table import render_waypoint_table
     from trailpager.route.pipeline import process_route
 
     with warnings.catch_warnings(record=True):
@@ -94,6 +99,8 @@ def test_pages_render_to_pdf(at_settings, tmp_path):
         processed.line_proj, page_w, page_h,
         at_settings.map.overlap_m, at_settings.map.margin_m,
     )
+
+    waypoints = build_waypoints(processed, at_settings)
 
     buf = BytesIO()
     with PdfPages(buf) as pdf:
@@ -110,5 +117,24 @@ def test_pages_render_to_pdf(at_settings, tmp_path):
             )
             pdf.savefig(fig)
 
+        pdf.savefig(render_waypoint_table(waypoints, at_settings))
+        pdf.savefig(render_disclaimer_page(at_settings, data_date=datetime.date.today().isoformat()))
+
     buf.seek(0)
     assert buf.read(4) == b"%PDF", "Output is not a valid PDF"
+
+
+def test_waypoint_table_has_start_and_end(at_settings):
+    """Waypoint list begins with Start and ends with End."""
+    from trailpager.layers.waypoints import build_waypoints
+    from trailpager.route.pipeline import process_route
+
+    with warnings.catch_warnings(record=True):
+        warnings.simplefilter("always")
+        processed = process_route(at_settings)
+
+    waypoints = build_waypoints(processed, at_settings)
+    assert waypoints[0].name == "Start"
+    assert waypoints[-1].name == "End"
+    # 17.69-mile route → start + 17 markers + end = 19 waypoints
+    assert len(waypoints) >= 18

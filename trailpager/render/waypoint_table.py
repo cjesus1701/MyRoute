@@ -12,7 +12,15 @@ def render_waypoint_table(waypoints: list[Waypoint], settings: Settings) -> Figu
     fig, ax = plt.subplots(figsize=(w_in, h_in))
     ax.set_axis_off()
 
-    col_labels = ["GPS Name", "Lat (WGS-84)", "Lon (WGS-84)", "UTM E (m)", "UTM N (m)", "Note"]
+    zone = settings.map.utm_zone
+    col_labels = [
+        "GPS Name",
+        "Lat (WGS-84)",
+        "Lon (WGS-84)",
+        f"UTM E (m) Z{zone}N",
+        f"UTM N (m) Z{zone}N",
+        "Note",
+    ]
     rows = []
     for wp in waypoints:
         easting, northing = wp.to_utm(settings.epsg)
@@ -37,7 +45,8 @@ def render_waypoint_table(waypoints: list[Waypoint], settings: Settings) -> Figu
     )
     fig.text(
         0.5, 0.05,
-        "Coordinates: WGS-84 / UTM Zone 17N (NAD-83 equivalent for navigation in this region).",
+        f"Coordinates: WGS-84 / UTM Zone {settings.map.utm_zone}N  "
+        "(NAD-83 equivalent for navigation in this region).",
         ha="center", fontsize=7, color="gray",
     )
     return fig

@@ -83,6 +83,26 @@ def test_process_route_line_proj_is_utm(tmp_path):
     assert result.crs_proj == "EPSG:32617"
 
 
+def test_build_waypoints(tmp_path):
+    from trailpager.layers.waypoints import build_waypoints
+    from trailpager.route.pipeline import process_route
+
+    f = tmp_path / "straight.geojson"
+    _write_straight_geojson(f)
+    processed = process_route(_settings(f))
+    waypoints = build_waypoints(processed, _settings(f))
+
+    # Must start with "Start" and end with "End"
+    assert waypoints[0].name == "Start"
+    assert waypoints[-1].name == "End"
+    # Every waypoint should have plausible WGS-84 coords for Virginia AT area
+    for wp in waypoints:
+        assert 37.0 < wp.lat < 39.0
+        assert -80.0 < wp.lon < -78.0
+    # At least start + 1 mile marker + end
+    assert len(waypoints) >= 3
+
+
 def test_loader_warns_on_multi_segment(tmp_path):
     """GeoJSON with a gap produces a warning, not an exception."""
     import geopandas as gpd

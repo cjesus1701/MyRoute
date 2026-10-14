@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import warnings
 from pathlib import Path
 
@@ -46,10 +47,13 @@ def generate(config: Path, dry_run: bool, verbose: bool) -> None:
         return
 
     from trailpager.layers.boundaries import fetch_boundary_layers
+    from trailpager.layers.waypoints import build_waypoints
     from trailpager.pagination.paginator import paginate
     from trailpager.pdf import assemble_pdf
+    from trailpager.render.disclaimer import render_disclaimer_page
     from trailpager.render.overview import render_overview_page
     from trailpager.render.page import render_detail_page
+    from trailpager.render.waypoint_table import render_waypoint_table
     from trailpager.route.pipeline import process_route
 
     # ── 1. Process route ──────────────────────────────────────────────────────
@@ -127,7 +131,15 @@ def generate(config: Path, dry_run: bool, verbose: bool) -> None:
             boundary_labels=blabels,
         ))
 
-    # ── 5. Assemble PDF ───────────────────────────────────────────────────────
+    # ── 5. Waypoint table + disclaimer ───────────────────────────────────────
+    waypoints = build_waypoints(processed, settings)
+    console.print(f"\nBuilding waypoint table ({len(waypoints)} waypoints)…")
+    figures.append(render_waypoint_table(waypoints, settings))
+
+    data_date = datetime.date.today().isoformat()
+    figures.append(render_disclaimer_page(settings, data_date=data_date))
+
+    # ── 6. Assemble PDF ───────────────────────────────────────────────────────
     console.print(f"\nAssembling PDF ({len(figures)} pages)…")
     assemble_pdf(figures, settings.output.path)
     console.print(f"[green]Saved → {settings.output.path}[/green]")

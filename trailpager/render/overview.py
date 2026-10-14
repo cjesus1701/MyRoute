@@ -89,9 +89,12 @@ def render_overview_page(
     draw_scale_bar(ax, display_scale, length_m=5000)
 
     ax.set_axis_off()
+    fig.text(0.5, 0.97, "Overview Map", ha="center", va="top", fontsize=10, fontweight="bold")
     footer = (
-        "Overview — all detail pages shown" if page_frames else
-        f"Scale ≈ 1:{display_scale:,}  |  WGS 84 / UTM Zone {settings.map.utm_zone}N  |  "
+        f"Scale ≈ 1:{display_scale:,}  ·  WGS 84 / UTM Zone {settings.map.utm_zone}N  ·  "
+        f"{len(page_frames)} detail page(s)  ·  Print at 100%"
+        if page_frames else
+        f"Scale ≈ 1:{display_scale:,}  ·  WGS 84 / UTM Zone {settings.map.utm_zone}N  ·  "
         "Print at 100%"
     )
     fig.text(0.5, 0.01, footer, ha="center", fontsize=6, color="gray")
