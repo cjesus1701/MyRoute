@@ -6,6 +6,9 @@ from shapely.geometry import LineString
 
 from trailpager.route.measure import MileMarker
 
+_BOUNDARY_COLORS = ["#2ca02c", "#1f77b4"]  # USFS green, NPS blue
+_BOUNDARY_LABELS = ["National Forest", "National Park"]
+
 
 def draw_scale_bar(
     ax: Axes,
@@ -82,3 +85,31 @@ def draw_utm_grid(
         ax.axhline(y, color="gray", linewidth=0.3, linestyle="--", zorder=2, alpha=0.6)
         ax.text(minx + (maxx - minx) * 0.01, y, f"{y / 1000:.0f}",
                 fontsize=5, ha="left", va="center", color="gray")
+
+
+def draw_boundaries(
+    ax: Axes,
+    gdfs: list,
+    target_epsg: int = 32617,
+    colors: list[str] | None = None,
+    labels: list[str] | None = None,
+) -> None:
+    if colors is None:
+        colors = _BOUNDARY_COLORS
+    if labels is None:
+        labels = _BOUNDARY_LABELS
+    for i, gdf in enumerate(gdfs):
+        if gdf is None or gdf.empty:
+            continue
+        gdf_proj = gdf.to_crs(f"EPSG:{target_epsg}")
+        color = colors[i % len(colors)]
+        label = labels[i % len(labels)]
+        gdf_proj.plot(
+            ax=ax,
+            facecolor="none",
+            edgecolor=color,
+            linewidth=1.2,
+            linestyle="--",
+            zorder=3,
+            label=label,
+        )

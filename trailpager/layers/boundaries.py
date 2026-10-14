@@ -13,7 +13,7 @@ USFS_REST_URL = (
 )
 NPS_REST_URL = (
     "https://services1.arcgis.com/fBc8EJBxQRMcHlei/arcgis/rest/services"
-    "/NPS_Park_Boundaries/FeatureServer/0/query"
+    "/NPS_Land_Resources_Division_Boundary_and_Tract_Data_Service/FeatureServer/2/query"
 )
 
 
@@ -34,8 +34,10 @@ def _fetch_arcgis_boundary(
 
     minx, miny, maxx, maxy = bbox
     params = {
+        "where": "1=1",
         "geometry": f"{minx},{miny},{maxx},{maxy}",
         "geometryType": "esriGeometryEnvelope",
+        "spatialRel": "esriSpatialRelIntersects",
         "inSR": "4326",
         "outSR": "4326",
         "f": "geojson",
