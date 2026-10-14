@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import matplotlib.patches as mpatches
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from shapely.geometry import LineString
@@ -63,19 +62,6 @@ def render_overview_page(
             if view_minx <= m.point.x <= view_maxx and view_miny <= m.point.y <= view_maxy
         ]
         draw_mile_markers(ax, visible)
-
-    for frame in page_frames:
-        fx0, fy0, fx1, fy1 = frame.bbox_proj
-        rect = mpatches.Rectangle(
-            (fx0, fy0), fx1 - fx0, fy1 - fy0,
-            linewidth=1, edgecolor="navy", facecolor="none", alpha=0.7, zorder=4,
-        )
-        ax.add_patch(rect)
-        ax.text(
-            (fx0 + fx1) / 2, (fy0 + fy1) / 2,
-            str(frame.page_number),
-            ha="center", va="center", fontsize=8, color="navy", fontweight="bold",
-        )
 
     if settings.layers.pois and pois:
         draw_pois(ax, pois, target_epsg=settings.epsg)

@@ -153,12 +153,6 @@ def generate(config: Path, dry_run: bool, verbose: bool) -> None:
         pois=pois or None,
     ))
 
-    if elev_points:
-        console.print("  Elevation profile…")
-        figures.append(render_elevation_profile_page(
-            elev_points, processed.mile_markers, settings, pois=pois or None,
-        ))
-
     for frame in frames:
         console.print(f"  Page {frame.page_number}/{len(frames)}…")
         figures.append(render_detail_page(
@@ -171,10 +165,16 @@ def generate(config: Path, dry_run: bool, verbose: bool) -> None:
             pois=pois or None,
         ))
 
-    # ── 7. Waypoint table + disclaimer ────────────────────────────────────────
+    # ── 7. Waypoint table + elevation profile + disclaimer ────────────────────
     waypoints = build_waypoints(processed, settings, pois=pois or None)
     console.print(f"\nBuilding waypoint table ({len(waypoints)} waypoints)…")
     figures.append(render_waypoint_table(waypoints, settings))
+
+    if elev_points:
+        console.print("  Elevation profile…")
+        figures.append(render_elevation_profile_page(
+            elev_points, processed.mile_markers, settings, pois=pois or None,
+        ))
 
     data_date = datetime.date.today().isoformat()
     figures.append(render_disclaimer_page(settings, data_date=data_date))

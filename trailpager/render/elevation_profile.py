@@ -60,14 +60,6 @@ def render_elevation_profile_page(
             ms = 8 if poi.kind == "shelter" else 6
             ax.plot(poi_mi, poi_elev, marker, color=color, markersize=ms, zorder=7,
                     markeredgecolor="white", markeredgewidth=0.5)
-            short = poi.name if len(poi.name) <= 20 else poi.name[:18] + "…"
-            ax.annotate(
-                short,
-                xy=(poi_mi, poi_elev),
-                xytext=(0, 10),
-                textcoords="offset points",
-                fontsize=5.5, ha="center", color=color, rotation=40, zorder=8,
-            )
             label = "Shelter" if poi.kind == "shelter" else "Water / Spring"
             if (label, poi.kind) not in legend_entries:
                 legend_entries.append((label, poi.kind))
