@@ -66,9 +66,25 @@ def paginate(
         page_end_dist = max(page_end_dist, current_start_dist + min_advance)
         page_end_dist = min(page_end_dist, total_length)
 
+        # Center the stored frame on the spatial bounding box of the route segment.
+        # The page-break walk above guarantees the segment fits within
+        # (page_width − margin) × (page_height − 2×margin), so the centered frame
+        # always contains the full segment with at least margin/2 to spare.
+        mask = (cum_dists >= current_start_dist) & (cum_dists <= page_end_dist)
+        seg = coords[mask]
+        s_pt = np.array(_interpolate_at_dist(coords, cum_dists, current_start_dist))
+        e_pt = np.array(_interpolate_at_dist(coords, cum_dists, page_end_dist))
+        seg = np.vstack([s_pt, seg, e_pt])
+        cx_c = (seg[:, 0].min() + seg[:, 0].max()) / 2
+        cy_c = (seg[:, 1].min() + seg[:, 1].max()) / 2
+        cminx = cx_c - page_width_m / 2
+        cminy = cy_c - page_height_m / 2
+        cmaxx = cx_c + page_width_m / 2
+        cmaxy = cy_c + page_height_m / 2
+
         frames.append(PageFrame(
             page_number=page_num,
-            bbox_proj=(minx, miny, maxx, maxy),
+            bbox_proj=(cminx, cminy, cmaxx, cmaxy),
             route_start_dist=current_start_dist,
             route_end_dist=page_end_dist,
         ))
