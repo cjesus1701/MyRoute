@@ -20,7 +20,8 @@ class RouteData:
     source_name: str
 
 
-def load_route(path: Path) -> RouteData:
+def load_route(path: Path | str) -> RouteData:
+    path = Path(path)
     suffix = path.suffix.lower()
     if suffix == ".gpx":
         return _load_gpx(path)
@@ -58,10 +59,16 @@ def _load_geojson(path: Path) -> RouteData:
 
     merged = linemerge(list(lines))
     if isinstance(merged, MultiLineString):
-        raise ValueError(
-            f"Could not merge all segments in {path} into a single connected line. "
-            "Check for gaps in the route geometry."
+        geoms = sorted(merged.geoms, key=lambda g: g.length, reverse=True)
+        total = sum(g.length for g in geoms)
+        dominant_pct = geoms[0].length / total * 100
+        warnings.warn(
+            f"{path.name}: {len(geoms)} disconnected segments after merge; "
+            f"using the longest ({dominant_pct:.0f}% of total length). "
+            "Trim or repair the source file to suppress this warning.",
+            stacklevel=4,
         )
+        merged = geoms[0]
 
     crs_epsg = gdf.crs.to_epsg() if gdf.crs else 4326
     return RouteData(line=merged, crs=f"EPSG:{crs_epsg}", source_name=path.name)
