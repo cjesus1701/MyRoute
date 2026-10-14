@@ -49,6 +49,7 @@
           <input type="text" id="input-end" placeholder="lat, lon" class="coord-input">
           <button class="btn-pick" data-target="end" title="Click on map">⊕</button>
         </div>
+        <div id="preview-spinner" class="preview-spinner hidden">Updating…</div>
         <div id="preview-info" class="hidden">
           <span id="preview-pages"></span>
           <span id="preview-miles"></span>
@@ -101,6 +102,9 @@
       <!-- Generate -->
       <section class="panel" id="panel-generate">
         <button id="btn-generate" class="btn-primary" disabled>Generate PDF</button>
+        <div id="gen-progress" class="hidden">
+          <div id="gen-progress-bar"></div>
+        </div>
         <div id="gen-status" class="hidden"></div>
       </section>
 

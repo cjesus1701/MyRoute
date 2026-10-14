@@ -101,6 +101,12 @@ html, body { height: 100%; overflow: hidden; font-family: system-ui, sans-serif;
 .btn-pick:hover { border-color: var(--accent); color: var(--accent); }
 .btn-pick.active { border-color: var(--accent); color: var(--accent); background: rgba(192,57,43,0.12); }
 
+.preview-spinner {
+  margin-top: 8px; font-size: 11px; color: var(--text-dim); font-style: italic;
+  animation: pulse 1s ease-in-out infinite;
+}
+@keyframes pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+
 #preview-info {
   margin-top: 8px;
   display: flex; gap: 12px;
@@ -146,6 +152,19 @@ html, body { height: 100%; overflow: hidden; font-family: system-ui, sans-serif;
 }
 .btn-primary:hover:not(:disabled) { background: var(--accent-h); }
 .btn-primary:disabled { background: var(--bg3); color: var(--text-dim); cursor: not-allowed; }
+
+#gen-progress {
+  margin-top: 8px; height: 3px; background: var(--bg3); border-radius: 2px; overflow: hidden;
+}
+#gen-progress-bar {
+  height: 100%; width: 0%; background: var(--accent);
+  transition: width 0.4s ease;
+  animation: indeterminate 1.4s ease-in-out infinite;
+}
+@keyframes indeterminate {
+  0%   { margin-left: -30%; width: 30%; }
+  100% { margin-left: 100%; width: 30%; }
+}
 
 #gen-status {
   margin-top: 10px; font-size: 12px; color: var(--text-dim); text-align: center;

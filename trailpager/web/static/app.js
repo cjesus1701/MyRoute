@@ -98,6 +98,7 @@ const elUploadWarnings = document.getElementById('upload-warnings');
 
 const elInputStart     = document.getElementById('input-start');
 const elInputEnd       = document.getElementById('input-end');
+const elPreviewSpinner = document.getElementById('preview-spinner');
 const elPreviewInfo    = document.getElementById('preview-info');
 const elPreviewPages   = document.getElementById('preview-pages');
 const elPreviewMiles   = document.getElementById('preview-miles');
@@ -112,6 +113,7 @@ const elInpOverlap     = document.getElementById('inp-overlap');
 const elInpUtmZone     = document.getElementById('inp-utm-zone');
 
 const elBtnGenerate    = document.getElementById('btn-generate');
+const elGenProgress    = document.getElementById('gen-progress');
 const elGenStatus      = document.getElementById('gen-status');
 
 const elPickBanner     = document.getElementById('pick-banner');
@@ -272,6 +274,9 @@ function schedulePreview() {
 async function runPreview() {
   if (!state.routeId || !state.startCoord || !state.endCoord) return;
 
+  elPreviewSpinner.classList.remove('hidden');
+  elPreviewInfo.classList.add('hidden');
+
   const body = buildRequestBody();
   let data;
   try {
@@ -283,9 +288,12 @@ async function runPreview() {
     data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Preview failed');
   } catch (err) {
+    elPreviewSpinner.classList.add('hidden');
     setPreviewWarnings([err.message]);
     return;
   }
+
+  elPreviewSpinner.classList.add('hidden');
 
   // Update trimmed route line
   if (data.route_geojson) {
@@ -311,6 +319,7 @@ elBtnGenerate.addEventListener('click', async () => {
   if (!state.routeId) return;
 
   elBtnGenerate.disabled = true;
+  elGenProgress.classList.remove('hidden');
   showStatus('Generating PDF — this may take a minute…', false);
 
   const body = { ...buildRequestBody(), layers: buildLayers() };
@@ -337,6 +346,7 @@ elBtnGenerate.addEventListener('click', async () => {
     showStatus(err.message, true);
   } finally {
     elBtnGenerate.disabled = false;
+    elGenProgress.classList.add('hidden');
   }
 });
 
