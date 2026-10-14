@@ -10,7 +10,11 @@ import requests
 from pyproj import Transformer
 from shapely.geometry import LineString, Point
 
-_OVERPASS_URL = "https://overpass.openstreetmap.fr/api/interpreter"
+_OVERPASS_URLS = [
+    "https://overpass-api.de/api/interpreter",
+    "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+    "https://overpass.openstreetmap.ru/api/interpreter",
+]
 
 _ICONS = {"shelter": "▲", "spring": "○", "water": "○"}
 _COLORS = {"shelter": "#8B0000", "spring": "#0D47A1", "water": "#0D47A1"}
@@ -72,12 +76,23 @@ def fetch_pois(
 );
 out body;"""
 
-    try:
-        resp = requests.post(_OVERPASS_URL, data={"data": query}, timeout=30)
-        resp.raise_for_status()
-        elements = resp.json().get("elements", [])
-    except Exception as exc:
-        warnings.warn(f"POI fetch failed: {exc}", stacklevel=2)
+    headers = {
+        "User-Agent": "TrailPager/1.0 (trail map generator; contact cjesus1701@gmail.com)",
+        "Accept": "application/json",
+    }
+    elements = None
+    last_exc: Exception | None = None
+    for url in _OVERPASS_URLS:
+        try:
+            resp = requests.post(url, data={"data": query}, headers=headers, timeout=45)
+            resp.raise_for_status()
+            elements = resp.json().get("elements", [])
+            break
+        except Exception as exc:
+            last_exc = exc
+            continue
+    if elements is None:
+        warnings.warn(f"POI fetch failed: {last_exc}", stacklevel=2)
         return []
 
     t_fwd = Transformer.from_crs("EPSG:4326", crs_proj, always_xy=True)
