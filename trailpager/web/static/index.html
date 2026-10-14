@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TrailPager</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <span class="logo">TrailPager</span>
+    </div>
+
+    <div id="sidebar-body">
+
+      <!-- Upload -->
+      <section class="panel" id="panel-upload">
+        <h2>Route file</h2>
+        <div id="drop-zone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 12V4m0 0L8 8m4-4l4 4"/>
+          </svg>
+          <p>Drop a .gpx or .geojson file here<br>or <label for="file-input" class="link">browse</label></p>
+          <input type="file" id="file-input" accept=".gpx,.geojson,.json" style="display:none">
+        </div>
+        <div id="route-info" class="hidden">
+          <div class="info-row">
+            <span id="route-filename"></span>
+            <button id="btn-clear-route" class="btn-icon" title="Remove route">✕</button>
+          </div>
+        </div>
+        <div id="upload-warnings" class="warning-box hidden"></div>
+      </section>
+
+      <!-- Start / End -->
+      <section class="panel" id="panel-endpoints">
+        <h2>Start &amp; end</h2>
+        <div class="coord-row">
+          <div class="coord-dot start-dot"></div>
+          <label>Start</label>
+          <input type="text" id="input-start" placeholder="lat, lon" class="coord-input">
+          <button class="btn-pick" data-target="start" title="Click on map">⊕</button>
+        </div>
+        <div class="coord-row">
+          <div class="coord-dot end-dot"></div>
+          <label>End</label>
+          <input type="text" id="input-end" placeholder="lat, lon" class="coord-input">
+          <button class="btn-pick" data-target="end" title="Click on map">⊕</button>
+        </div>
+        <div id="preview-info" class="hidden">
+          <span id="preview-pages"></span>
+          <span id="preview-miles"></span>
+        </div>
+        <div id="preview-warnings" class="warning-box hidden"></div>
+      </section>
+
+      <!-- Settings -->
+      <section class="panel" id="panel-settings">
+        <h2>Map settings</h2>
+        <div class="field-row">
+          <label>Scale</label>
+          <select id="sel-scale">
+            <option value="24000">1 : 24,000</option>
+            <option value="50000">1 : 50,000</option>
+            <option value="100000">1 : 100,000</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label>Paper</label>
+          <select id="sel-paper">
+            <option value="letter_landscape">Letter landscape</option>
+            <option value="letter_portrait">Letter portrait</option>
+            <option value="a4_landscape">A4 landscape</option>
+            <option value="a4_portrait">A4 portrait</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label>Overlap</label>
+          <input type="number" id="inp-overlap" value="500" min="0" max="2000" step="50"> m
+        </div>
+        <div class="field-row">
+          <label>UTM zone</label>
+          <input type="number" id="inp-utm-zone" value="17" min="1" max="60">
+        </div>
+      </section>
+
+      <!-- Layers -->
+      <section class="panel" id="panel-layers">
+        <h2>Layers</h2>
+        <label class="toggle-row"><input type="checkbox" id="lyr-topo" checked> Topo basemap</label>
+        <label class="toggle-row"><input type="checkbox" id="lyr-usfs" checked> USFS boundary</label>
+        <label class="toggle-row"><input type="checkbox" id="lyr-nps" checked> NPS boundary</label>
+        <label class="toggle-row"><input type="checkbox" id="lyr-miles" checked> Mile markers</label>
+        <label class="toggle-row"><input type="checkbox" id="lyr-grid" checked> UTM grid</label>
+        <label class="toggle-row"><input type="checkbox" id="lyr-elev" checked> Elevation profile</label>
+        <label class="toggle-row"><input type="checkbox" id="lyr-pois" checked> Shelters &amp; water</label>
+      </section>
+
+      <!-- Generate -->
+      <section class="panel" id="panel-generate">
+        <button id="btn-generate" class="btn-primary" disabled>Generate PDF</button>
+        <div id="gen-status" class="hidden"></div>
+      </section>
+
+    </div><!-- /sidebar-body -->
+  </div><!-- /sidebar -->
+
+  <div id="map"></div>
+
+  <!-- Picking mode banner -->
+  <div id="pick-banner" class="hidden">
+    <span id="pick-label">Click on the map to set start point</span>
+    <button id="btn-cancel-pick">Cancel</button>
+  </div>
+
+  <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

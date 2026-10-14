@@ -1,0 +1,177 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --sidebar-w: 300px;
+  --accent:    #c0392b;
+  --accent-h:  #962d22;
+  --bg:        #1a1a1a;
+  --bg2:       #242424;
+  --bg3:       #2e2e2e;
+  --border:    #383838;
+  --text:      #e8e8e8;
+  --text-dim:  #888;
+  --warn:      #b8860b;
+}
+
+html, body { height: 100%; overflow: hidden; font-family: system-ui, sans-serif; font-size: 13px; color: var(--text); background: var(--bg); }
+
+/* ── Layout ─────────────────────────────────────────────── */
+#sidebar {
+  position: fixed; left: 0; top: 0; bottom: 0;
+  width: var(--sidebar-w);
+  background: var(--bg2);
+  border-right: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  z-index: 10;
+  overflow: hidden;
+}
+
+#map {
+  position: fixed;
+  left: var(--sidebar-w); right: 0; top: 0; bottom: 0;
+}
+
+/* ── Sidebar header ─────────────────────────────────────── */
+#sidebar-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.logo { font-size: 16px; font-weight: 700; letter-spacing: 0.03em; color: var(--accent); }
+
+/* ── Sidebar body ───────────────────────────────────────── */
+#sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0 16px;
+}
+#sidebar-body::-webkit-scrollbar { width: 5px; }
+#sidebar-body::-webkit-scrollbar-track { background: transparent; }
+#sidebar-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── Panels ─────────────────────────────────────────────── */
+.panel {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.panel h2 {
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--text-dim); margin-bottom: 10px;
+}
+
+/* ── Drop zone ──────────────────────────────────────────── */
+#drop-zone {
+  border: 1.5px dashed var(--border);
+  border-radius: 6px;
+  padding: 18px 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+#drop-zone:hover, #drop-zone.drag-over {
+  border-color: var(--accent);
+  background: rgba(192,57,43,0.06);
+}
+#drop-zone svg { width: 28px; height: 28px; color: var(--text-dim); margin-bottom: 8px; }
+#drop-zone p { color: var(--text-dim); line-height: 1.5; font-size: 12px; }
+.link { color: var(--accent); cursor: pointer; text-decoration: underline; }
+
+/* ── Route info ─────────────────────────────────────────── */
+.info-row { display: flex; align-items: center; gap: 8px; }
+#route-filename { flex: 1; font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.btn-icon { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 3px; }
+.btn-icon:hover { color: var(--text); background: var(--bg3); }
+
+/* ── Coord rows ─────────────────────────────────────────── */
+.coord-row { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.coord-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.start-dot { background: #27ae60; }
+.end-dot   { background: var(--accent); }
+.coord-row label { width: 32px; color: var(--text-dim); flex-shrink: 0; }
+.coord-input {
+  flex: 1; background: var(--bg3); border: 1px solid var(--border);
+  color: var(--text); border-radius: 4px; padding: 5px 7px; font-size: 12px;
+  font-family: monospace;
+}
+.coord-input:focus { outline: none; border-color: var(--accent); }
+.btn-pick {
+  background: var(--bg3); border: 1px solid var(--border);
+  color: var(--text-dim); border-radius: 4px; padding: 4px 7px; cursor: pointer; font-size: 14px;
+}
+.btn-pick:hover { border-color: var(--accent); color: var(--accent); }
+.btn-pick.active { border-color: var(--accent); color: var(--accent); background: rgba(192,57,43,0.12); }
+
+#preview-info {
+  margin-top: 8px;
+  display: flex; gap: 12px;
+  font-size: 12px; color: var(--text-dim);
+}
+#preview-info span { background: var(--bg3); border-radius: 4px; padding: 3px 8px; }
+
+/* ── Fields ─────────────────────────────────────────────── */
+.field-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.field-row:last-child { margin-bottom: 0; }
+.field-row label { width: 70px; color: var(--text-dim); flex-shrink: 0; }
+.field-row select, .field-row input[type="number"] {
+  flex: 1; background: var(--bg3); border: 1px solid var(--border);
+  color: var(--text); border-radius: 4px; padding: 5px 7px; font-size: 12px;
+}
+.field-row select:focus, .field-row input[type="number"]:focus { outline: none; border-color: var(--accent); }
+.field-row span { color: var(--text-dim); flex-shrink: 0; }
+
+/* ── Toggles ────────────────────────────────────────────── */
+.toggle-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0; cursor: pointer; color: var(--text-dim);
+  user-select: none;
+}
+.toggle-row:hover { color: var(--text); }
+.toggle-row input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
+
+/* ── Warnings ───────────────────────────────────────────── */
+.warning-box {
+  margin-top: 8px; padding: 8px 10px;
+  background: rgba(184, 134, 11, 0.12);
+  border: 1px solid rgba(184, 134, 11, 0.35);
+  border-radius: 4px; font-size: 11px; color: #d4a017; line-height: 1.5;
+}
+
+/* ── Generate button ────────────────────────────────────── */
+.btn-primary {
+  width: 100%; padding: 10px;
+  background: var(--accent); color: #fff;
+  border: none; border-radius: 5px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-primary:hover:not(:disabled) { background: var(--accent-h); }
+.btn-primary:disabled { background: var(--bg3); color: var(--text-dim); cursor: not-allowed; }
+
+#gen-status {
+  margin-top: 10px; font-size: 12px; color: var(--text-dim); text-align: center;
+}
+#gen-status.error { color: #e74c3c; }
+
+/* ── Pick banner ────────────────────────────────────────── */
+#pick-banner {
+  position: fixed;
+  top: 14px; left: calc(var(--sidebar-w) + 14px); right: 14px;
+  background: rgba(26, 26, 26, 0.92);
+  border: 1px solid var(--accent);
+  border-radius: 6px; padding: 10px 14px;
+  display: flex; align-items: center; justify-content: space-between;
+  z-index: 20; backdrop-filter: blur(4px);
+  font-size: 13px;
+}
+#btn-cancel-pick {
+  background: none; border: 1px solid var(--border); color: var(--text-dim);
+  border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 12px;
+}
+#btn-cancel-pick:hover { border-color: var(--text); color: var(--text); }
+
+/* ── Utilities ──────────────────────────────────────────── */
+.hidden { display: none !important; }
+
+/* ── MapLibre overrides ─────────────────────────────────── */
+.maplibregl-ctrl-bottom-right { right: 8px; }
+.maplibregl-ctrl-attrib { font-size: 10px; }

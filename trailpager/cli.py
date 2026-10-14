@@ -18,6 +18,32 @@ def main() -> None:
 
 
 @main.command()
+@click.option("--host", default="127.0.0.1", show_default=True, help="Bind address.")
+@click.option("--port", default=8000, show_default=True, help="Port to listen on.")
+@click.option("--open/--no-open", "open_browser", default=True, show_default=True, help="Open browser on start.")
+def serve(host: str, port: int, open_browser: bool) -> None:
+    """Start the TrailPager web interface."""
+    import threading
+    import time
+    import webbrowser
+
+    import uvicorn
+
+    url = f"http://{host}:{port}"
+    console.print(f"[bold]TrailPager[/bold] → {url}")
+    console.print("Press [bold]Ctrl+C[/bold] to stop.\n")
+
+    if open_browser:
+        def _open():
+            time.sleep(0.8)
+            webbrowser.open(url)
+        threading.Thread(target=_open, daemon=True).start()
+
+    from trailpager.web.app import app as web_app
+    uvicorn.run(web_app, host=host, port=port, log_level="warning")
+
+
+@main.command()
 @click.option(
     "--config",
     "-c",
