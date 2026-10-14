@@ -51,9 +51,31 @@ def draw_route(
     line: LineString,
     color: str = "#d62728",
     linewidth: float = 2.0,
+    direction_dist: float | None = None,
 ) -> None:
+    """Draw the route line.  If *direction_dist* (metres from line start) is
+    given, a travel-direction arrowhead is placed at that point."""
     xs, ys = line.xy
     ax.plot(xs, ys, color=color, linewidth=linewidth, zorder=5, solid_capstyle="round")
+
+    if direction_dist is not None:
+        total = line.length
+        d0 = max(0.0, min(direction_dist, total))
+        d1 = min(d0 + max(total * 0.02, 200.0), total)  # tail 2% of line or 200 m behind tip
+        p0 = line.interpolate(d0)
+        p1 = line.interpolate(d1)
+        ax.annotate(
+            "",
+            xy=(p1.x, p1.y),
+            xytext=(p0.x, p0.y),
+            arrowprops=dict(
+                arrowstyle="-|>",
+                color=color,
+                lw=linewidth,
+                mutation_scale=14,
+            ),
+            zorder=6,
+        )
 
 
 def draw_mile_markers(ax: Axes, markers: list[MileMarker], color: str = "#d62728") -> None:

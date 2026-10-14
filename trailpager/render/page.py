@@ -53,7 +53,9 @@ def render_detail_page(
             labels=boundary_labels,
         )
 
-    draw_route(ax, route_proj)
+    # Direction arrow at midpoint of this page's route segment
+    direction_dist = (page_frame.route_start_dist + page_frame.route_end_dist) / 2
+    draw_route(ax, route_proj, direction_dist=direction_dist)
 
     if settings.layers.mile_markers:
         visible = [
@@ -69,11 +71,19 @@ def render_detail_page(
     draw_north_arrow(ax)
 
     ax.set_axis_off()
+
+    start_mi = page_frame.route_start_dist / 1609.344
+    end_mi   = page_frame.route_end_dist   / 1609.344
+    n = page_frame.page_number
+    prev_hint = f"← Pg {n - 1}  " if n > 1 else ""
+    next_hint = f"  Pg {n + 1} →" if n < total_pages else ""
     fig.text(
         0.5, 0.01,
-        f"Page {page_frame.page_number} of {total_pages}  |  "
-        f"Scale 1:{settings.map.scale:,}  |  Print at 100% — do not scale  |  "
-        f"WGS 84 / UTM Zone {settings.map.utm_zone}N",
+        f"{prev_hint}"
+        f"Page {n} of {total_pages}  ·  Miles {start_mi:.1f} – {end_mi:.1f}  ·  "
+        f"Scale 1:{settings.map.scale:,}  ·  Print at 100%  ·  "
+        f"WGS 84 / UTM Zone {settings.map.utm_zone}N"
+        f"{next_hint}",
         ha="center", fontsize=6, color="gray",
     )
     fig.tight_layout(pad=0.2)

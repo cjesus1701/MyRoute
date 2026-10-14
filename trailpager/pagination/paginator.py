@@ -12,8 +12,8 @@ _SAMPLE_INTERVAL_M = 50.0  # densify line to at most this segment length before 
 class PageFrame:
     page_number: int
     bbox_proj: tuple[float, float, float, float]  # minx, miny, maxx, maxy in projected CRS
-    route_start_dist: float  # meters from route start
-    route_end_dist: float    # meters from route end
+    route_start_dist: float  # meters from route start to page start
+    route_end_dist: float    # meters from route start to page end
 
 
 def paginate(
