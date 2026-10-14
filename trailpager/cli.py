@@ -47,10 +47,13 @@ def generate(config: Path, dry_run: bool, verbose: bool) -> None:
         return
 
     from trailpager.layers.boundaries import fetch_boundary_layers
+    from trailpager.layers.elevation import sample_route_elevation
+    from trailpager.layers.pois import fetch_pois
     from trailpager.layers.waypoints import build_waypoints
     from trailpager.pagination.paginator import paginate
     from trailpager.pdf import assemble_pdf
     from trailpager.render.disclaimer import render_disclaimer_page
+    from trailpager.render.elevation_profile import render_elevation_profile_page
     from trailpager.render.overview import render_overview_page
     from trailpager.render.page import render_detail_page
     from trailpager.render.waypoint_table import render_waypoint_table
@@ -93,8 +96,9 @@ def generate(config: Path, dry_run: bool, verbose: bool) -> None:
             f" {f.route_end_dist / 1609.344:.1f}"
         )
 
-    # ── 3. Boundaries ─────────────────────────────────────────────────────────
     cache_dir = config.parent / ".tile_cache"
+
+    # ── 3. Boundaries ─────────────────────────────────────────────────────────
     console.print("\nFetching boundary data…")
     wgs_bounds = processed.line_wgs84.bounds  # (minx, miny, maxx, maxy)
     with warnings.catch_warnings(record=True) as caught:
@@ -106,7 +110,35 @@ def generate(config: Path, dry_run: bool, verbose: bool) -> None:
         status = f"{len(gdf)} feature(s)" if not gdf.empty else "unavailable"
         console.print(f"  {lbl}: {status}")
 
-    # ── 4. Render ─────────────────────────────────────────────────────────────
+    # ── 4. POIs ───────────────────────────────────────────────────────────────
+    pois: list = []
+    if settings.layers.pois:
+        console.print("\nFetching shelters and water sources…")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            pois = fetch_pois(processed.line_proj, processed.crs_proj, wgs_bounds, cache_dir)
+        for w in caught:
+            console.print(f"  [yellow]⚠  {w.message}[/yellow]")
+        shelters = sum(1 for p in pois if p.kind == "shelter")
+        water    = sum(1 for p in pois if p.kind != "shelter")
+        console.print(f"  {shelters} shelter(s), {water} water source(s)")
+
+    # ── 5. Elevation profile ──────────────────────────────────────────────────
+    elev_points: list = []
+    if settings.layers.elevation_profile:
+        console.print("\nFetching elevation data…")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            elev_points = sample_route_elevation(
+                processed.line_proj, processed.crs_proj,
+                processed.length_m, cache_dir=cache_dir,
+            )
+        for w in caught:
+            console.print(f"  [yellow]⚠  {w.message}[/yellow]")
+        if elev_points:
+            console.print(f"  {len(elev_points)} elevation samples")
+
+    # ── 6. Render ─────────────────────────────────────────────────────────────
     console.print("\nRendering…")
     figures = []
 
@@ -118,7 +150,14 @@ def generate(config: Path, dry_run: bool, verbose: bool) -> None:
         boundaries=boundaries,
         boundary_colors=bcolors,
         boundary_labels=blabels,
+        pois=pois or None,
     ))
+
+    if elev_points:
+        console.print("  Elevation profile…")
+        figures.append(render_elevation_profile_page(
+            elev_points, processed.mile_markers, settings, pois=pois or None,
+        ))
 
     for frame in frames:
         console.print(f"  Page {frame.page_number}/{len(frames)}…")
@@ -129,17 +168,18 @@ def generate(config: Path, dry_run: bool, verbose: bool) -> None:
             boundaries=boundaries,
             boundary_colors=bcolors,
             boundary_labels=blabels,
+            pois=pois or None,
         ))
 
-    # ── 5. Waypoint table + disclaimer ───────────────────────────────────────
-    waypoints = build_waypoints(processed, settings)
+    # ── 7. Waypoint table + disclaimer ────────────────────────────────────────
+    waypoints = build_waypoints(processed, settings, pois=pois or None)
     console.print(f"\nBuilding waypoint table ({len(waypoints)} waypoints)…")
     figures.append(render_waypoint_table(waypoints, settings))
 
     data_date = datetime.date.today().isoformat()
     figures.append(render_disclaimer_page(settings, data_date=data_date))
 
-    # ── 6. Assemble PDF ───────────────────────────────────────────────────────
+    # ── 8. Assemble PDF ───────────────────────────────────────────────────────
     console.print(f"\nAssembling PDF ({len(figures)} pages)…")
     assemble_pdf(figures, settings.output.path)
     console.print(f"[green]Saved → {settings.output.path}[/green]")

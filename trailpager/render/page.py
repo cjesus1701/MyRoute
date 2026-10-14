@@ -11,6 +11,7 @@ from trailpager.render.cartography import (
     draw_boundaries,
     draw_mile_markers,
     draw_north_arrow,
+    draw_pois,
     draw_route,
     draw_scale_bar,
     draw_utm_grid,
@@ -27,6 +28,7 @@ def render_detail_page(
     boundaries: list | None = None,
     boundary_colors: list[str] | None = None,
     boundary_labels: list[str] | None = None,
+    pois: list | None = None,
 ) -> Figure:
     w_in, h_in = settings.page_size_inches
     fig, ax = plt.subplots(figsize=(w_in, h_in))
@@ -64,6 +66,14 @@ def render_detail_page(
 
     if settings.layers.utm_grid:
         draw_utm_grid(ax, page_frame.bbox_proj)
+
+    if settings.layers.pois and pois:
+        page_pois = [
+            p for p in pois
+            if page_frame.route_start_dist - 1000 <= p.distance_m <= page_frame.route_end_dist + 1000
+        ]
+        if page_pois:
+            draw_pois(ax, page_pois, target_epsg=settings.epsg)
 
     draw_scale_bar(ax, settings.map.scale)
     draw_north_arrow(ax)

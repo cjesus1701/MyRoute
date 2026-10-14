@@ -17,7 +17,8 @@ usfs_boundary     = true
 nps_boundary      = true
 mile_markers      = true
 utm_grid          = true
-elevation_profile = false
+elevation_profile = true
+pois              = true   # shelters and water sources from OpenStreetMap
 
 [output]
 path = "output/at_reids_rockfish.pdf"

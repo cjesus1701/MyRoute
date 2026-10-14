@@ -22,45 +22,49 @@ class Waypoint:
         return easting, northing
 
 
-def build_waypoints(processed, settings) -> list[Waypoint]:
+def build_waypoints(processed, settings, pois=None) -> list[Waypoint]:
     """Build a GPS-ready waypoint list from a ProcessedRoute.
 
-    Includes the trailhead start, every whole-mile marker, and the end.
-    Points are back-projected from UTM to WGS-84.
+    Includes the trailhead start, every whole-mile marker, POIs (shelters
+    and water sources), and the end — all sorted by distance along the route.
     """
-    from trailpager.config import Settings
-
     t_inv = Transformer.from_crs(
         f"EPSG:{settings.epsg}", "EPSG:4326", always_xy=True
     )
 
-    waypoints: list[Waypoint] = []
+    # Build as (distance_m, Waypoint) so we can sort before returning
+    entries: list[tuple[float, Waypoint]] = []
 
-    # Start
     sx, sy = processed.line_proj.coords[0]
     s_lon, s_lat = t_inv.transform(sx, sy)
-    waypoints.append(Waypoint(name="Start", lat=s_lat, lon=s_lon, note="Mile 0.0"))
+    entries.append((0.0, Waypoint(name="Start", lat=s_lat, lon=s_lon, note="Mile 0.0")))
 
-    # Whole-mile markers (skip mile 0 — duplicates Start)
     for m in processed.mile_markers:
         if m.number == 0.0:
             continue
         lon, lat = t_inv.transform(m.point.x, m.point.y)
-        waypoints.append(Waypoint(
+        entries.append((m.distance_m, Waypoint(
             name=f"Mile {m.number:.1f}",
-            lat=lat,
-            lon=lon,
+            lat=lat, lon=lon,
             note=f"{m.number:.1f} mi from start",
-        ))
+        )))
 
-    # End
+    if pois:
+        for poi in pois:
+            entries.append((poi.distance_m, Waypoint(
+                name=poi.name,
+                lat=poi.lat,
+                lon=poi.lon,
+                note=f"{poi.kind.title()} — {poi.distance_m / 1609.344:.1f} mi",
+            )))
+
     ex, ey = processed.line_proj.coords[-1]
     e_lon, e_lat = t_inv.transform(ex, ey)
-    waypoints.append(Waypoint(
+    entries.append((processed.length_m, Waypoint(
         name="End",
-        lat=e_lat,
-        lon=e_lon,
+        lat=e_lat, lon=e_lon,
         note=f"Mile {processed.length_miles:.1f}",
-    ))
+    )))
 
-    return waypoints
+    entries.sort(key=lambda e: e[0])
+    return [wp for _, wp in entries]

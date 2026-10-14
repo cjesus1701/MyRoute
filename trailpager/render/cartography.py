@@ -122,6 +122,29 @@ def draw_utm_grid(
         ax.text(maxx, y, label, ha="right", va="center", **lkw)
 
 
+def draw_pois(
+    ax: Axes,
+    pois: list,
+    target_epsg: int = 32617,
+) -> None:
+    """Plot shelter and water-source POIs as map markers with labels."""
+    from pyproj import Transformer
+    t = Transformer.from_crs("EPSG:4326", f"EPSG:{target_epsg}", always_xy=True)
+    for poi in pois:
+        x, y = t.transform(poi.lon, poi.lat)
+        marker = "^" if poi.kind == "shelter" else "o"
+        ms = 8 if poi.kind == "shelter" else 6
+        ax.plot(x, y, marker, color=poi.color, markersize=ms, zorder=7,
+                markeredgecolor="white", markeredgewidth=0.5)
+        if poi.name:
+            short = poi.name if len(poi.name) <= 16 else poi.name[:14] + "…"
+            ax.annotate(
+                short, xy=(x, y), xytext=(5, 5),
+                textcoords="offset points", fontsize=6, color=poi.color, zorder=8,
+                bbox=dict(boxstyle="round,pad=0.1", facecolor="white", alpha=0.75, linewidth=0),
+            )
+
+
 def draw_boundaries(
     ax: Axes,
     gdfs: list,

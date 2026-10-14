@@ -13,6 +13,7 @@ from trailpager.render.cartography import (
     draw_boundaries,
     draw_mile_markers,
     draw_north_arrow,
+    draw_pois,
     draw_route,
     draw_scale_bar,
 )
@@ -27,6 +28,7 @@ def render_overview_page(
     boundaries: list | None = None,
     boundary_colors: list[str] | None = None,
     boundary_labels: list[str] | None = None,
+    pois: list | None = None,
 ) -> Figure:
     w_in, h_in = settings.page_size_inches
     fig, ax = plt.subplots(figsize=(w_in, h_in))
@@ -75,10 +77,12 @@ def render_overview_page(
             ha="center", va="center", fontsize=8, color="navy", fontweight="bold",
         )
 
-    if boundaries:
-        handles, lbls = ax.get_legend_handles_labels()
-        if handles:
-            ax.legend(handles, lbls, loc="lower right", fontsize=6, framealpha=0.8)
+    if settings.layers.pois and pois:
+        draw_pois(ax, pois, target_epsg=settings.epsg)
+
+    handles, lbls = ax.get_legend_handles_labels()
+    if handles:
+        ax.legend(handles, lbls, loc="lower right", fontsize=6, framealpha=0.8)
 
     draw_north_arrow(ax)
 

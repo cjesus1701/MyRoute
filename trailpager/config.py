@@ -29,6 +29,7 @@ class LayersConfig(BaseModel):
     mile_markers: bool = True
     utm_grid: bool = True
     elevation_profile: bool = False
+    pois: bool = True  # shelters and water sources
 
 
 class OutputConfig(BaseModel):

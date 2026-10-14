@@ -60,3 +60,40 @@ def test_disclaimer_renders():
 
     fig = render_disclaimer_page(_default_settings(), data_date="2026-10-14")
     assert fig is not None
+
+
+def test_elevation_profile_renders():
+    import numpy as np
+    from trailpager.layers.elevation import ElevationPoint
+    from trailpager.render.elevation_profile import render_elevation_profile_page
+
+    elev_points = [
+        ElevationPoint(
+            distance_m=float(i) * 1000,
+            lat=37.9 + i * 0.005,
+            lon=-79.0 + i * 0.005,
+            elevation_m=600.0 + 150.0 * np.sin(i * 0.4),
+        )
+        for i in range(30)
+    ]
+    fig = render_elevation_profile_page(elev_points, [], _default_settings())
+    assert fig is not None
+
+
+def test_elevation_profile_with_pois():
+    import numpy as np
+    from trailpager.layers.elevation import ElevationPoint
+    from trailpager.layers.pois import POI
+    from trailpager.render.elevation_profile import render_elevation_profile_page
+
+    elev_points = [
+        ElevationPoint(distance_m=float(i) * 1000, lat=37.9, lon=-79.0,
+                       elevation_m=600.0 + 100.0 * np.sin(i * 0.3))
+        for i in range(30)
+    ]
+    pois = [
+        POI(name="Test Shelter", lat=37.92, lon=-78.98, kind="shelter", distance_m=5000.0),
+        POI(name="Spring",       lat=37.95, lon=-78.96, kind="spring",  distance_m=10000.0),
+    ]
+    fig = render_elevation_profile_page(elev_points, [], _default_settings(), pois=pois)
+    assert fig is not None
