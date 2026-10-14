@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trailpager"
+version = "0.1.0"
+description = "Generate printable multi-page PDF trail maps from GPX or GeoJSON routes"
+requires-python = ">=3.11"
+dependencies = [
+    "click>=8.1",
+    "gpxpy>=1.6",
+    "geopandas>=0.14",
+    "shapely>=2.0",
+    "pyproj>=3.6",
+    "matplotlib>=3.8",
+    "contextily>=1.6",
+    "requests>=2.31",
+    "pydantic>=2.5",
+    "rich>=13",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+]
+
+[project.scripts]
+trailpager = "trailpager.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["trailpager*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+markers = [
+    "network: requires network access",
+    "slow: slow tests",
+]
+testpaths = ["tests"]

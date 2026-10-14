@@ -1,0 +1,23 @@
+[route]
+file = "data/at_va_south.gpx"
+start = [37.9123, -79.0891]   # Reids Gap — [lat, lon] WGS-84
+end   = [38.0319, -78.8731]   # Rockfish Gap
+
+[map]
+scale = 24000               # map scale denominator (1:24,000)
+page_size = "letter"        # "letter" | "a4"
+orientation = "landscape"   # "portrait" | "landscape"
+overlap_m = 500             # meters of overlap between consecutive pages
+margin_m  = 200             # safe margin inside each page frame (must be < overlap_m)
+utm_zone  = 17              # UTM zone number, Northern Hemisphere
+
+[layers]
+topo_basemap      = true
+usfs_boundary     = true
+nps_boundary      = true
+mile_markers      = true
+utm_grid          = true
+elevation_profile = false
+
+[output]
+path = "output/at_reids_rockfish.pdf"
