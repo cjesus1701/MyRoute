@@ -95,18 +95,31 @@ def draw_utm_grid(
     bbox_proj: tuple[float, float, float, float],
     interval_m: float = 1000.0,
 ) -> None:
+    """Draw 1 km UTM grid lines with coordinate labels on all four borders.
+
+    Labels show the kilometre value (e.g. "686" for 686 000 m E) with a
+    white box so they read clearly over the basemap.  Labels appear at both
+    the top & bottom edges for eastings, and both the left & right edges for
+    northings, so a grid line is labelled wherever it reaches a page border.
+    """
     minx, miny, maxx, maxy = bbox_proj
-    xs = np.arange(np.floor(minx / interval_m) * interval_m, maxx, interval_m)
-    ys = np.arange(np.floor(miny / interval_m) * interval_m, maxy, interval_m)
+    xs = np.arange(np.ceil(minx / interval_m) * interval_m, maxx, interval_m)
+    ys = np.arange(np.ceil(miny / interval_m) * interval_m, maxy, interval_m)
+
+    box = dict(boxstyle="square,pad=0.15", facecolor="white", alpha=0.85, linewidth=0)
+    lkw = dict(fontsize=7, color="black", bbox=box, zorder=8)
 
     for x in xs:
-        ax.axvline(x, color="gray", linewidth=0.3, linestyle="--", zorder=2, alpha=0.6)
-        ax.text(x, miny + (maxy - miny) * 0.01, f"{x / 1000:.0f}",
-                fontsize=5, ha="center", va="bottom", color="gray")
+        ax.axvline(x, color="gray", linewidth=0.35, linestyle="--", zorder=2, alpha=0.65)
+        label = f"{x / 1000:.0f}"
+        ax.text(x, miny, label, ha="center", va="bottom", **lkw)
+        ax.text(x, maxy, label, ha="center", va="top",    **lkw)
+
     for y in ys:
-        ax.axhline(y, color="gray", linewidth=0.3, linestyle="--", zorder=2, alpha=0.6)
-        ax.text(minx + (maxx - minx) * 0.01, y, f"{y / 1000:.0f}",
-                fontsize=5, ha="left", va="center", color="gray")
+        ax.axhline(y, color="gray", linewidth=0.35, linestyle="--", zorder=2, alpha=0.65)
+        label = f"{y / 1000:.0f}"
+        ax.text(minx, y, label, ha="left",  va="center", **lkw)
+        ax.text(maxx, y, label, ha="right", va="center", **lkw)
 
 
 def draw_boundaries(

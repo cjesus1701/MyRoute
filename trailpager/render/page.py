@@ -53,9 +53,7 @@ def render_detail_page(
             labels=boundary_labels,
         )
 
-    # Direction arrow at midpoint of this page's route segment
-    direction_dist = (page_frame.route_start_dist + page_frame.route_end_dist) / 2
-    draw_route(ax, route_proj, direction_dist=direction_dist)
+    draw_route(ax, route_proj)
 
     if settings.layers.mile_markers:
         visible = [
