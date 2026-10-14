@@ -39,6 +39,17 @@ def add_basemap(
         cx.add_basemap(ax, crs=crs, source=cx.providers.OpenStreetMap.Mapnik.url, zoom=zoom)
 
 
-def zoom_for_scale(scale: int) -> int:
-    zoom = round(math.log2(559_082_264 / (scale * 96 / 2.54)))
-    return max(10, min(zoom, 16))
+def zoom_for_scale(scale: int, dpi: int = 300) -> int:
+    """Return the web-tile zoom level whose pixel resolution matches the print scale.
+
+    Derivation: web tiles have a native resolution of 156,543 m/px at zoom 0
+    (equator, Web Mercator).  For a printed map at *scale* and *dpi*, each
+    pixel represents (scale × 0.0254 / dpi) ground metres.  Setting the two
+    equal and solving for Z gives the formula below.
+
+    At 1:24,000 / 300 DPI this returns 16, which is the USGS 7.5-minute quad
+    level — the zoom at which trail names, contour labels, and road names are
+    all legible.
+    """
+    zoom = round(math.log2(156_543.04 * dpi / (scale * 0.0254)))
+    return max(10, min(zoom, 18))
