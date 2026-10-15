@@ -120,22 +120,29 @@ map.on('load', async () => {
   // ── Client-side vector contours via maplibre-contour (100 ft intervals, zoom ≥ 15)
   // zoom 15 ≈ scale bar showing ≤ 1000 ft at US latitudes
   try {
-    const { DemSource } = await import('https://esm.sh/maplibre-contour');
+    const mod = await import('https://esm.sh/maplibre-contour');
+    const DemSource = mod.DemSource || (mod.default && mod.default.DemSource);
+    if (!DemSource) throw new Error('DemSource not found in maplibre-contour module');
+
     const demContour = new DemSource({
       url: '/api/terrain/{z}/{x}/{y}.png',
       encoding: 'terrarium',
       maxzoom: 15,
       worker: false,
     });
-    demContour.setupMaplibre(map);
-    map.addSource('contours', demContour.contourSource({
-      thresholds: {
-        15: [30.48, 152.4], // 100 ft minor, 500 ft (every 5th) major
-      },
-      elevationKey: 'ele',
-      levelKey: 'level',
-      contourLayer: 'contours',
-    }));
+    // setupMaplibre requires the maplibregl global, not the map instance
+    demContour.setupMaplibre(maplibregl);
+
+    map.addSource('contours', {
+      type: 'vector',
+      tiles: [demContour.contourProtocolUrl({
+        multiplier: 3.28084,   // elevations in feet → thresholds in feet
+        thresholds: {
+          15: [100, 500],      // 100 ft minor, 500 ft (index) major
+        },
+      })],
+      maxzoom: 15,
+    });
     map.addLayer({
       id: 'contours-layer',
       type: 'line',
@@ -171,7 +178,7 @@ map.on('load', async () => {
       filter: ['==', ['get', 'level'], 1],
       layout: {
         'symbol-placement': 'line',
-        'text-field': ['concat', ['to-string', ['round', ['*', ['get', 'ele'], 3.28084]]], ' ft'],
+        'text-field': ['concat', ['to-string', ['get', 'ele']], ' ft'],
         'text-size': 9,
         'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
         'text-max-angle': 30,
