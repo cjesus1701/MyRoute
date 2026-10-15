@@ -548,11 +548,18 @@ async function runPreview() {
 elBtnSaveGpx.addEventListener('click',     () => triggerExport('gpx'));
 elBtnSaveGeojson.addEventListener('click', () => triggerExport('geojson'));
 
+function getOutputName() {
+  const raw = document.getElementById('inp-filename').value.trim();
+  // Keep alphanumerics, spaces, hyphens, underscores; collapse to single spaces; trim
+  const safe = raw.replace(/[^\w\s\-]/g, '').replace(/\s+/g, ' ').trim();
+  return safe || 'trail_map';
+}
+
 function triggerExport(fmt) {
   if (!state.routeId) return;
   const a = document.createElement('a');
   a.href = `/api/export/${state.routeId}/${fmt}`;
-  a.download = `route.${fmt}`;
+  a.download = `${getOutputName()}.${fmt}`;
   a.click();
 }
 
@@ -580,7 +587,7 @@ elBtnGenerate.addEventListener('click', async () => {
     if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Generation failed'); }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'trail_map.pdf'; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = `${getOutputName()}.pdf`; a.click();
     URL.revokeObjectURL(url);
     showStatus('✓ PDF downloaded', false);
   } catch (err) {
