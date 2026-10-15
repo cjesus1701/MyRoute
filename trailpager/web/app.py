@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 from trailpager.config import Settings
 
-app = FastAPI(title="TrailPager")
+app = FastAPI(title="MyRoute")
 
 # In-memory store: route_id → { "path": Path }
 _routes: dict[str, dict] = {}
@@ -585,7 +585,7 @@ async def export_gpx(route_id: str) -> StreamingResponse:
     coords = list(route_data.line.coords)  # (lon, lat)
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
-        '<gpx version="1.1" creator="TrailPager" xmlns="http://www.topografix.com/GPX/1/1">',
+        '<gpx version="1.1" creator="MyRoute" xmlns="http://www.topografix.com/GPX/1/1">',
         "  <trk><name>Trail Route</name><trkseg>",
     ]
     for lon, lat in coords:
