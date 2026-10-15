@@ -27,6 +27,7 @@ const state = {
 // ── Map ────────────────────────────────────────────────────────────────────
 const map = new maplibregl.Map({
   container: 'map',
+  dragRotate: false, // 3D pitch/rotate is opt-in via the settings toggle
   style: {
     version: 8,
     glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
@@ -1287,6 +1288,14 @@ document.getElementById('lyr-contours').addEventListener('change', (e) => {
 document.getElementById('lyr-hillshade').addEventListener('change', (e) => {
   if (map.getLayer('terrain-hillshade'))
     map.setLayoutProperty('terrain-hillshade', 'visibility', e.target.checked ? 'visible' : 'none');
+});
+document.getElementById('map-3d').addEventListener('change', (e) => {
+  if (e.target.checked) {
+    map.dragRotate.enable();
+  } else {
+    map.dragRotate.disable();
+    map.easeTo({ pitch: 0, bearing: 0, duration: 300 });
+  }
 });
 
 // ── Preview ────────────────────────────────────────────────────────────────

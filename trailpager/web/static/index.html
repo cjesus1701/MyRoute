@@ -49,6 +49,11 @@
           <label>UTM zone <span class="help-tip" data-tooltip="Universal Transverse Mercator zone used for the coordinate grid. Most of the eastern US is zone 17–18. Check a UTM zone map if unsure.">?</span></label>
           <input type="number" id="inp-utm-zone" value="17" min="1" max="60">
         </div>
+        <div class="toggle-row" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+          <input type="checkbox" id="map-3d">
+          <label for="map-3d">3D terrain</label>
+          <span class="help-tip" data-tooltip="Enables right-click drag to pitch and rotate the map for a 3D perspective view. Defaults to flat 2D on startup.">?</span>
+        </div>
       </section>
 
       <!-- ── Layers ────────────────────────────────────── -->
