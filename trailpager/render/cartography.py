@@ -110,13 +110,13 @@ def draw_utm_grid(
     lkw = dict(fontsize=7, color="black", bbox=box, zorder=8)
 
     for x in xs:
-        ax.axvline(x, color="gray", linewidth=0.35, linestyle="--", zorder=2, alpha=0.65)
+        ax.axvline(x, color="#404040", linewidth=0.5, linestyle="--", zorder=2, alpha=0.85)
         label = f"{x / 1000:.0f}"
         ax.text(x, miny, label, ha="center", va="bottom", **lkw)
         ax.text(x, maxy, label, ha="center", va="top",    **lkw)
 
     for y in ys:
-        ax.axhline(y, color="gray", linewidth=0.35, linestyle="--", zorder=2, alpha=0.65)
+        ax.axhline(y, color="#404040", linewidth=0.5, linestyle="--", zorder=2, alpha=0.85)
         label = f"{y / 1000:.0f}"
         ax.text(minx, y, label, ha="left",  va="center", **lkw)
         ax.text(maxx, y, label, ha="right", va="center", **lkw)
@@ -126,6 +126,7 @@ def draw_pois(
     ax: Axes,
     pois: list,
     target_epsg: int = 32617,
+    bw: bool = False,
 ) -> None:
     """Plot shelter and water-source POIs as map markers with labels."""
     from pyproj import Transformer
@@ -134,15 +135,28 @@ def draw_pois(
         x, y = t.transform(poi.lon, poi.lat)
         marker = "^" if poi.kind == "shelter" else "o"
         ms = 8 if poi.kind == "shelter" else 6
-        ax.plot(x, y, marker, color=poi.color, markersize=ms, zorder=7,
-                markeredgecolor="white", markeredgewidth=0.5)
+        if bw:
+            # Shelter: filled black triangle; water: hollow circle (white fill, black edge)
+            is_shelter = poi.kind == "shelter"
+            fc = "black" if is_shelter else "white"
+            ec = "black"
+            ax.plot(x, y, marker, color=fc, markersize=ms, zorder=7,
+                    markeredgecolor=ec, markeredgewidth=1.2)
+            label_color = "black"
+        else:
+            ax.plot(x, y, marker, color=poi.color, markersize=ms, zorder=7,
+                    markeredgecolor="white", markeredgewidth=0.5)
+            label_color = poi.color
         if poi.name:
             short = poi.name if len(poi.name) <= 16 else poi.name[:14] + "…"
             ax.annotate(
                 short, xy=(x, y), xytext=(5, 5),
-                textcoords="offset points", fontsize=6, color=poi.color, zorder=8,
+                textcoords="offset points", fontsize=6, color=label_color, zorder=8,
                 bbox=dict(boxstyle="round,pad=0.1", facecolor="white", alpha=0.75, linewidth=0),
             )
+
+
+_BOUNDARY_LINESTYLES = ["--", ":"]
 
 
 def draw_boundaries(
@@ -151,23 +165,27 @@ def draw_boundaries(
     target_epsg: int = 32617,
     colors: list[str] | None = None,
     labels: list[str] | None = None,
+    linestyles: list[str] | None = None,
 ) -> None:
     if colors is None:
         colors = _BOUNDARY_COLORS
     if labels is None:
         labels = _BOUNDARY_LABELS
+    if linestyles is None:
+        linestyles = _BOUNDARY_LINESTYLES
     for i, gdf in enumerate(gdfs):
         if gdf is None or gdf.empty:
             continue
         gdf_proj = gdf.to_crs(f"EPSG:{target_epsg}")
         color = colors[i % len(colors)]
         label = labels[i % len(labels)]
+        ls    = linestyles[i % len(linestyles)]
         gdf_proj.plot(
             ax=ax,
             facecolor="none",
             edgecolor=color,
             linewidth=1.2,
-            linestyle="--",
+            linestyle=ls,
             zorder=3,
             label=label,
         )

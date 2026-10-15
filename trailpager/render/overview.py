@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from shapely.geometry import LineString
 
@@ -30,7 +29,8 @@ def render_overview_page(
     pois: list | None = None,
 ) -> Figure:
     w_in, h_in = settings.page_size_inches
-    fig, ax = plt.subplots(figsize=(w_in, h_in))
+    fig = Figure(figsize=(w_in, h_in))
+    ax = fig.add_subplot(1, 1, 1)
     ax.set_aspect("equal")
 
     minx, miny, maxx, maxy = route_proj.bounds
@@ -42,29 +42,35 @@ def render_overview_page(
     ax.set_xlim(view_minx, view_maxx)
     ax.set_ylim(view_miny, view_maxy)
 
+    bw = settings.map.bw_print
+
     if settings.layers.topo_basemap:
         from trailpager.tiles.fetcher import add_basemap
-        add_basemap(ax, crs=f"EPSG:{settings.epsg}", zoom="auto", cache_dir=cache_dir)
+        add_basemap(ax, crs=f"EPSG:{settings.epsg}", zoom="auto", cache_dir=cache_dir, grayscale=bw)
 
     if boundaries and (settings.layers.usfs_boundary or settings.layers.nps_boundary):
+        bw_colors = ["#000000", "#444444"] if bw else boundary_colors
+        bw_styles  = ["--", ":"]
         draw_boundaries(
             ax, boundaries,
             target_epsg=settings.epsg,
-            colors=boundary_colors,
+            colors=bw_colors,
             labels=boundary_labels,
+            linestyles=bw_styles if bw else None,
         )
 
-    draw_route(ax, route_proj, linewidth=1.5)
+    route_color = "#000000" if bw else "#d62728"
+    draw_route(ax, route_proj, color=route_color, linewidth=1.5)
 
     if mile_markers and settings.layers.mile_markers:
         visible = [
             m for m in mile_markers
             if view_minx <= m.point.x <= view_maxx and view_miny <= m.point.y <= view_maxy
         ]
-        draw_mile_markers(ax, visible)
+        draw_mile_markers(ax, visible, color="#000000" if bw else "#d62728")
 
     if settings.layers.pois and pois:
-        draw_pois(ax, pois, target_epsg=settings.epsg)
+        draw_pois(ax, pois, target_epsg=settings.epsg, bw=bw)
 
     handles, lbls = ax.get_legend_handles_labels()
     if handles:

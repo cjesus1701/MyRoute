@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 from trailpager.config import Settings
@@ -31,12 +30,15 @@ def render_detail_page(
     pois: list | None = None,
 ) -> Figure:
     w_in, h_in = settings.page_size_inches
-    fig, ax = plt.subplots(figsize=(w_in, h_in))
+    fig = Figure(figsize=(w_in, h_in))
+    ax = fig.add_subplot(1, 1, 1)
     ax.set_aspect("equal")
 
     minx, miny, maxx, maxy = page_frame.bbox_proj
     ax.set_xlim(minx, maxx)
     ax.set_ylim(miny, maxy)
+
+    bw = settings.map.bw_print
 
     if settings.layers.topo_basemap:
         from trailpager.tiles.fetcher import add_basemap, zoom_for_scale
@@ -45,24 +47,29 @@ def render_detail_page(
             crs=f"EPSG:{settings.epsg}",
             zoom=zoom_for_scale(settings.map.scale),
             cache_dir=cache_dir,
+            grayscale=bw,
         )
 
     if boundaries and (settings.layers.usfs_boundary or settings.layers.nps_boundary):
+        bw_colors = ["#000000", "#444444"] if bw else boundary_colors
+        bw_styles  = ["--", ":"]
         draw_boundaries(
             ax, boundaries,
             target_epsg=settings.epsg,
-            colors=boundary_colors,
+            colors=bw_colors,
             labels=boundary_labels,
+            linestyles=bw_styles if bw else None,
         )
 
-    draw_route(ax, route_proj)
+    route_color = "#000000" if bw else "#d62728"
+    draw_route(ax, route_proj, color=route_color)
 
     if settings.layers.mile_markers:
         visible = [
             m for m in mile_markers
             if minx <= m.point.x <= maxx and miny <= m.point.y <= maxy
         ]
-        draw_mile_markers(ax, visible)
+        draw_mile_markers(ax, visible, color="#000000" if bw else "#d62728")
 
     if settings.layers.utm_grid:
         draw_utm_grid(ax, page_frame.bbox_proj)
@@ -73,7 +80,7 @@ def render_detail_page(
             if page_frame.route_start_dist - 1000 <= p.distance_m <= page_frame.route_end_dist + 1000
         ]
         if page_pois:
-            draw_pois(ax, page_pois, target_epsg=settings.epsg)
+            draw_pois(ax, page_pois, target_epsg=settings.epsg, bw=bw)
 
     draw_scale_bar(ax, settings.map.scale)
     draw_north_arrow(ax)

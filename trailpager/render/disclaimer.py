@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 from trailpager.config import Settings
@@ -32,7 +31,8 @@ DATUM
 
 def render_disclaimer_page(settings: Settings, data_date: str = "") -> Figure:
     w_in, h_in = settings.page_size_inches
-    fig, ax = plt.subplots(figsize=(w_in, h_in))
+    fig = Figure(figsize=(w_in, h_in))
+    ax = fig.add_subplot(1, 1, 1)
     ax.set_axis_off()
 
     body = _BODY

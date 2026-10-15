@@ -20,6 +20,7 @@ class MapConfig(BaseModel):
     overlap_m: float = Field(500.0, ge=0)
     margin_m: float = Field(200.0, ge=0)
     utm_zone: int = Field(17, ge=1, le=60)
+    bw_print: bool = False
 
 
 class LayersConfig(BaseModel):

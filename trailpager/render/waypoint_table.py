@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
 from trailpager.config import Settings
@@ -9,7 +8,8 @@ from trailpager.layers.waypoints import Waypoint
 
 def render_waypoint_table(waypoints: list[Waypoint], settings: Settings) -> Figure:
     w_in, h_in = settings.page_size_inches
-    fig, ax = plt.subplots(figsize=(w_in, h_in))
+    fig = Figure(figsize=(w_in, h_in))
+    ax = fig.add_subplot(1, 1, 1)
     ax.set_axis_off()
 
     zone = settings.map.utm_zone

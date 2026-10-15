@@ -5,6 +5,7 @@ import warnings
 from pathlib import Path
 
 import contextily as cx
+import numpy as np
 from matplotlib.axes import Axes
 
 USGS_TOPO_URL = (
@@ -19,6 +20,7 @@ def add_basemap(
     crs: str,
     zoom: int | str = "auto",
     cache_dir: Path | None = None,
+    grayscale: bool = False,
 ) -> None:
     if cache_dir:
         cx.set_cache_dir(str(cache_dir))
@@ -37,6 +39,20 @@ def add_basemap(
             stacklevel=2,
         )
         cx.add_basemap(ax, crs=crs, source=cx.providers.OpenStreetMap.Mapnik.url, zoom=zoom)
+
+    if grayscale:
+        for artist in ax.get_images():
+            rgba = artist.get_array()
+            if rgba is None or rgba.ndim < 3:
+                continue
+            rgb = rgba[:, :, :3].astype(np.float32)
+            lum = 0.2126 * rgb[:, :, 0] + 0.7152 * rgb[:, :, 1] + 0.0722 * rgb[:, :, 2]
+            gray_rgb = np.stack([lum, lum, lum], axis=-1).astype(rgba.dtype)
+            if rgba.shape[2] == 4:
+                out = np.dstack([gray_rgb, rgba[:, :, 3]])
+            else:
+                out = gray_rgb
+            artist.set_array(out)
 
 
 def zoom_for_scale(scale: int, dpi: int = 300) -> int:

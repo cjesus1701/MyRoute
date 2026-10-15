@@ -39,15 +39,33 @@ def paginate(
     while current_start_dist < total_length:
         cx, cy = _interpolate_at_dist(coords, cum_dists, current_start_dist)
 
-        # Place the route entry point 2 × margin from the left edge.
-        # The extra buffer absorbs brief westward excursions (e.g. switchbacks)
-        # without terminating the page prematurely.
-        minx = cx - 2 * margin_m
-        miny = cy - page_height_m / 2
+        # Determine local travel direction with a short lookahead so the page
+        # is placed with the entry point near the *incoming* edge.
+        look_dist = min(page_width_m * 0.25, total_length - current_start_dist)
+        if look_dist > _SAMPLE_INTERVAL_M:
+            fx, fy = _interpolate_at_dist(coords, cum_dists, current_start_dist + look_dist)
+            going_east  = fx >= cx
+            going_north = fy >= cy
+        else:
+            going_east  = True
+            going_north = True
+
+        # Horizontal placement: entry near left edge when going east, near right when going west
+        if going_east:
+            minx = cx - 2 * margin_m
+        else:
+            minx = cx - page_width_m + 2 * margin_m
         maxx = minx + page_width_m
+
+        # Vertical placement: entry near bottom when going north, near top when going south
+        if going_north:
+            miny = cy - 2 * margin_m
+        else:
+            miny = cy - page_height_m + 2 * margin_m
         maxy = miny + page_height_m
 
         # Safe inner boundary — route must stay within this to count for the page
+        safe_minx = minx + margin_m
         safe_maxx = maxx - margin_m
         safe_miny = miny + margin_m
         safe_maxy = maxy - margin_m
@@ -58,7 +76,7 @@ def paginate(
             if d < current_start_dist:
                 continue
             x, y = coords[i]
-            if minx <= x <= safe_maxx and safe_miny <= y <= safe_maxy:
+            if safe_minx <= x <= safe_maxx and safe_miny <= y <= safe_maxy:
                 page_end_dist = d
             elif d > current_start_dist:
                 break

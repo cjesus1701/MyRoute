@@ -15,11 +15,10 @@
 
     <div id="sidebar-body">
 
-      <!-- Route source -->
+      <!-- ── Route source ──────────────────────────────── -->
       <section class="panel" id="panel-route">
         <h2>Route</h2>
 
-        <!-- Empty state -->
         <div id="route-empty">
           <div id="drop-zone">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -30,10 +29,9 @@
             <input type="file" id="file-input" accept=".gpx,.geojson,.json" style="display:none">
           </div>
           <div class="or-divider"><span>or</span></div>
-          <p class="map-hint">Click <strong>⊕</strong> next to Start &amp; End below to place markers on the map — a hiking route will be generated automatically</p>
+          <p class="map-hint">Click waypoints on the map below to build a route automatically</p>
         </div>
 
-        <!-- Generating state -->
         <div id="route-generating" class="hidden">
           <div class="gen-route-spinner">
             <div class="spinner-dot"></div>
@@ -41,14 +39,16 @@
           </div>
         </div>
 
-        <!-- Loaded state -->
         <div id="route-loaded" class="hidden">
           <div class="info-row">
             <span id="route-filename"></span>
-            <button id="btn-clear-route" class="btn-icon" title="Remove route">✕</button>
+            <div style="display:flex;gap:6px">
+              <button id="btn-reverse-route" class="btn-icon" title="Reverse direction (swap start ↔ end)">⇄</button>
+              <button id="btn-clear-route" class="btn-icon" title="Remove route">✕</button>
+            </div>
           </div>
           <div class="export-row">
-            <button id="btn-save-gpx" class="btn-secondary">↓ GPX</button>
+            <button id="btn-save-gpx"     class="btn-secondary">↓ GPX</button>
             <button id="btn-save-geojson" class="btn-secondary">↓ GeoJSON</button>
           </div>
         </div>
@@ -56,22 +56,56 @@
         <div id="upload-warnings" class="warning-box hidden"></div>
       </section>
 
-      <!-- Start / End -->
+      <!-- ── Start / End (upload mode) ────────────────── -->
       <section class="panel" id="panel-endpoints">
-        <h2>Start &amp; end</h2>
-        <div class="coord-row">
-          <div class="coord-dot start-dot"></div>
-          <label>Start</label>
-          <input type="text" id="input-start" placeholder="lat, lon" class="coord-input">
-          <button class="btn-pick" data-target="start" title="Click on map">⊕</button>
+
+        <div id="ep-upload" class="hidden">
+          <h2>Start &amp; end</h2>
+          <div class="coord-row">
+            <div class="coord-dot start-dot"></div>
+            <label>Start</label>
+            <input type="text" id="input-start" placeholder="lat, lon" class="coord-input">
+            <button class="btn-pick" data-target="start" title="Click on map">⊕</button>
+          </div>
+          <div class="coord-row">
+            <div class="coord-dot end-dot"></div>
+            <label>End</label>
+            <input type="text" id="input-end" placeholder="lat, lon" class="coord-input">
+            <button class="btn-pick" data-target="end" title="Click on map">⊕</button>
+          </div>
         </div>
-        <div class="coord-row">
-          <div class="coord-dot end-dot"></div>
-          <label>End</label>
-          <input type="text" id="input-end" placeholder="lat, lon" class="coord-input">
-          <button class="btn-pick" data-target="end" title="Click on map">⊕</button>
+
+        <div id="ep-draw">
+          <h2>Route points</h2>
+
+          <div class="mode-toggle">
+            <label class="mode-opt">
+              <input type="radio" name="draw-mode" value="routed" checked>
+              <span>Routed</span>
+            </label>
+            <label class="mode-opt">
+              <input type="radio" name="draw-mode" value="freehand">
+              <span>Freehand</span>
+            </label>
+          </div>
+          <p id="draw-mode-hint" class="map-hint mode-hint-routed">Auto-routes via roads &amp; trails</p>
+          <p id="draw-mode-hint-free" class="map-hint mode-hint-freehand hidden">Straight lines — trace any trail manually</p>
+
+          <p id="draw-hint" class="map-hint" style="margin-top:8px">Click on the map to place your first waypoint</p>
+          <div id="draw-stats" class="hidden">
+            <span id="draw-wp-count"></span>
+          </div>
+          <div class="draw-btn-row">
+            <button id="btn-undo" class="btn-secondary" disabled>↩ Undo <kbd>Ctrl+Z</kbd></button>
+            <button id="btn-redo" class="btn-secondary" disabled>↪ Redo <kbd>Ctrl+Y</kbd></button>
+          </div>
+          <div id="draw-fetching" class="segment-spinner hidden">
+            <div class="spinner-dot"></div> Routing segment…
+          </div>
         </div>
-        <div id="preview-spinner" class="preview-spinner hidden">Updating…</div>
+
+        <!-- shared preview feedback -->
+        <div id="preview-spinner" class="preview-spinner hidden">Updating pages…</div>
         <div id="preview-info" class="hidden">
           <span id="preview-pages"></span>
           <span id="preview-miles"></span>
@@ -79,7 +113,7 @@
         <div id="preview-warnings" class="warning-box hidden"></div>
       </section>
 
-      <!-- Settings -->
+      <!-- ── Map settings ──────────────────────────────── -->
       <section class="panel" id="panel-settings">
         <h2>Map settings</h2>
         <div class="field-row">
@@ -101,7 +135,7 @@
         </div>
         <div class="field-row">
           <label>Overlap</label>
-          <input type="number" id="inp-overlap" value="500" min="0" max="2000" step="50"> m
+          <input type="number" id="inp-overlap" value="500" min="250" max="2000" step="50"> m
         </div>
         <div class="field-row">
           <label>UTM zone</label>
@@ -109,25 +143,24 @@
         </div>
       </section>
 
-      <!-- Layers -->
+      <!-- ── Layers ────────────────────────────────────── -->
       <section class="panel" id="panel-layers">
         <h2>Layers</h2>
-        <label class="toggle-row"><input type="checkbox" id="lyr-topo" checked> Topo basemap</label>
-        <label class="toggle-row"><input type="checkbox" id="lyr-usfs" checked> USFS boundary</label>
-        <label class="toggle-row"><input type="checkbox" id="lyr-nps" checked> NPS boundary</label>
+        <label class="toggle-row"><input type="checkbox" id="lyr-topo"  checked> Topo basemap</label>
+        <label class="toggle-row"><input type="checkbox" id="lyr-usfs"  checked> USFS boundary</label>
+        <label class="toggle-row"><input type="checkbox" id="lyr-nps"   checked> NPS boundary</label>
         <label class="toggle-row"><input type="checkbox" id="lyr-miles" checked> Mile markers</label>
-        <label class="toggle-row"><input type="checkbox" id="lyr-grid" checked> UTM grid</label>
-        <label class="toggle-row"><input type="checkbox" id="lyr-elev" checked> Elevation profile</label>
-        <label class="toggle-row"><input type="checkbox" id="lyr-pois" checked> Shelters &amp; water</label>
+        <label class="toggle-row"><input type="checkbox" id="lyr-grid"  checked> UTM grid</label>
+        <label class="toggle-row"><input type="checkbox" id="lyr-elev"  checked> Elevation profile</label>
+        <label class="toggle-row"><input type="checkbox" id="lyr-pois"  checked> Shelters &amp; water</label>
+        <label class="toggle-row" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px"><input type="checkbox" id="lyr-bw"> Black &amp; white printing</label>
       </section>
 
-      <!-- Generate -->
+      <!-- ── Generate ──────────────────────────────────── -->
       <section class="panel" id="panel-generate">
         <button id="btn-generate" class="btn-primary" disabled>Generate PDF</button>
-        <div id="gen-progress" class="hidden">
-          <div id="gen-progress-bar"></div>
-        </div>
-        <div id="gen-status" class="hidden"></div>
+        <div id="gen-progress" class="hidden"><div id="gen-progress-bar"></div></div>
+        <div id="gen-status"   class="hidden"></div>
       </section>
 
     </div>
@@ -135,7 +168,7 @@
 
   <div id="map"></div>
 
-  <!-- Pick mode banner -->
+  <!-- Pick-mode banner (upload mode only) -->
   <div id="pick-banner" class="hidden">
     <span id="pick-label">Click on the map to set start point</span>
     <button id="btn-cancel-pick">Cancel</button>
