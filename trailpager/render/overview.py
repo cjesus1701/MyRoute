@@ -14,6 +14,7 @@ from trailpager.render.cartography import (
     draw_pois,
     draw_route,
     draw_scale_bar,
+    draw_utm_grid,
 )
 
 
@@ -72,6 +73,16 @@ def render_overview_page(
     if settings.layers.pois and pois:
         draw_pois(ax, pois, target_epsg=settings.epsg, bw=bw)
 
+    if settings.layers.utm_grid:
+        # Pick a round interval that yields ~5–8 grid lines across the view
+        view_extent = max(view_maxx - view_minx, view_maxy - view_miny)
+        grid_interval_m = next(
+            (s for s in (1000, 2000, 5000, 10000, 20000, 50000, 100000)
+             if view_extent / s <= 8),
+            100000,
+        )
+        draw_utm_grid(ax, (view_minx, view_miny, view_maxx, view_maxy), interval_m=grid_interval_m)
+
     handles, lbls = ax.get_legend_handles_labels()
     if handles:
         ax.legend(handles, lbls, loc="lower right", fontsize=6, framealpha=0.8)
@@ -85,7 +96,6 @@ def render_overview_page(
     draw_scale_bar(ax, display_scale, length_m=5000)
 
     ax.set_axis_off()
-    fig.text(0.5, 0.97, "Overview Map", ha="center", va="top", fontsize=10, fontweight="bold")
     footer = (
         f"Scale ≈ 1:{display_scale:,}  ·  WGS 84 / UTM Zone {settings.map.utm_zone}N  ·  "
         f"{len(page_frames)} detail page(s)  ·  Print at 100%"
