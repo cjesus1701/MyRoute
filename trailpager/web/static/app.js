@@ -2,22 +2,24 @@
 
 // ── State ──────────────────────────────────────────────────────────────────
 const state = {
-  // Shared
+  routes:      [],    // {routeId,filename,color,geojson,bounds,startCoord,endCoord,elevationProfile,distanceMiles,gainFt,lossFt,warnings}[]
+  selectedIdx: null,  // index of selected uploaded route, or null
+
+  // Active route for PDF
   routeId:     null,
-  routeSource: null,   // 'upload' | 'drawn' | null
+  routeSource: null,  // 'upload' | 'drawn' | null
+  startCoord:  null,
+  endCoord:    null,
 
-  // Upload mode
-  startCoord: null,    // [lat, lon]
-  endCoord:   null,
-  pickMode:   null,    // 'start' | 'end' | null
-
-  // Draw mode
-  waypoints:        [],   // [[lat, lon], ...]
-  segmentCoords:    [],   // [[[lon, lat], ...], ...]  one array per segment
-  segmentDetoured:  [],   // bool[] — true when segment fell back to straight line
-  redoStack:        [],   // [{wp:[lat,lon], seg:[[lon,lat],...] | null, det:bool}]
+  // Drawn route
+  drawnRouteId:      null,
+  waypoints:         [],
+  segmentCoords:     [],
+  segmentDetoured:   [],
+  redoStack:         [],
   isFetchingSegment: false,
 
+  pickMode:        null,
   previewDebounce: null,
   commitDebounce:  null,
 };
@@ -47,7 +49,7 @@ map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
 map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-left');
 
 map.on('load', () => {
-  // Route line (solid red for properly routed segments)
+  // Drawn route line
   map.addSource('route', { type: 'geojson', data: emptyFC() });
   map.addLayer({
     id: 'route-line', type: 'line', source: 'route',
@@ -55,7 +57,7 @@ map.on('load', () => {
     paint: { 'line-color': '#c0392b', 'line-width': 3, 'line-opacity': 0.9 },
   });
 
-  // Detour overlay (dashed orange for straight-line fallback segments)
+  // Detour overlay (dashed orange)
   map.addSource('route-detour', { type: 'geojson', data: emptyFC() });
   map.addLayer({
     id: 'route-detour-line', type: 'line', source: 'route-detour',
@@ -65,41 +67,30 @@ map.on('load', () => {
 
   // Page frames
   map.addSource('frames', { type: 'geojson', data: emptyFC() });
-  map.addLayer({ id: 'frames-fill', type: 'fill', source: 'frames', paint: { 'fill-color': '#2980b9', 'fill-opacity': 0.08 } });
-  map.addLayer({ id: 'frames-outline', type: 'line', source: 'frames', paint: { 'line-color': '#2980b9', 'line-width': 1.5, 'line-opacity': 0.7 } });
+  map.addLayer({ id: 'frames-fill',    type: 'fill',   source: 'frames', paint: { 'fill-color': '#2980b9', 'fill-opacity': 0.08 } });
+  map.addLayer({ id: 'frames-outline', type: 'line',   source: 'frames', paint: { 'line-color': '#2980b9', 'line-width': 1.5, 'line-opacity': 0.7 } });
   map.addLayer({
     id: 'frames-labels', type: 'symbol', source: 'frames',
     layout: { 'text-field': ['to-string', ['get', 'page']], 'text-size': 12, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-anchor': 'center' },
     paint: { 'text-color': '#2980b9', 'text-halo-color': '#fff', 'text-halo-width': 1.5 },
   });
 
-  // Waypoint dots (draw mode)
+  // Waypoint dots
   map.addSource('waypoints', { type: 'geojson', data: emptyFC() });
-  // White halo behind each dot
   map.addLayer({ id: 'wp-halo', type: 'circle', source: 'waypoints', paint: { 'circle-radius': 8, 'circle-color': '#fff', 'circle-opacity': 0.9 } });
-  // Coloured dot: green = first, red = last, blue = intermediate
   map.addLayer({
     id: 'wp-dot', type: 'circle', source: 'waypoints',
     paint: {
       'circle-radius': 6,
-      'circle-color': [
-        'case',
+      'circle-color': ['case',
         ['boolean', ['get', 'isFirst'], false], '#27ae60',
         ['boolean', ['get', 'isLast'],  false], '#c0392b',
-        '#3498db',
-      ],
+        '#3498db'],
     },
   });
-  // Index label inside each dot
   map.addLayer({
     id: 'wp-label', type: 'symbol', source: 'waypoints',
-    layout: {
-      'text-field': ['to-string', ['get', 'idx']],
-      'text-size': 9,
-      'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'],
-      'text-anchor': 'center',
-      'text-allow-overlap': true,
-    },
+    layout: { 'text-field': ['to-string', ['get', 'idx']], 'text-size': 9, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-anchor': 'center', 'text-allow-overlap': true },
     paint: { 'text-color': '#fff' },
   });
 });
@@ -108,45 +99,70 @@ map.on('load', () => {
 map.on('click', (e) => {
   const { lat, lng } = e.lngLat;
   if (state.pickMode) {
-    // Upload mode: set start or end
     setCoord(state.pickMode, [lat, lng]);
     cancelPickMode();
     onUploadCoordsChanged();
-  } else if (state.routeSource !== 'upload') {
-    // Draw mode: add a waypoint
+  } else if (state.selectedIdx === null) {
     addWaypoint([lat, lng]);
   }
 });
 
-// Change cursor to crosshair while over the map in draw mode
 map.on('mousemove', () => {
-  if (!state.pickMode && state.routeSource !== 'upload' && !state.isFetchingSegment) {
+  if (!state.pickMode && state.selectedIdx === null && !state.isFetchingSegment) {
     map.getCanvas().style.cursor = 'crosshair';
+  } else if (!state.pickMode) {
+    map.getCanvas().style.cursor = '';
   }
 });
 
 // ── DOM refs ───────────────────────────────────────────────────────────────
-const elDropZone        = document.getElementById('drop-zone');
-const elFileInput       = document.getElementById('file-input');
-const elRouteEmpty      = document.getElementById('route-empty');
-const elRouteGenerating = document.getElementById('route-generating');
-const elRouteLoaded     = document.getElementById('route-loaded');
-const elRouteFilename   = document.getElementById('route-filename');
-const elBtnClearRoute   = document.getElementById('btn-clear-route');
-const elBtnSaveGpx      = document.getElementById('btn-save-gpx');
-const elBtnSaveGeojson  = document.getElementById('btn-save-geojson');
-const elUploadWarnings  = document.getElementById('upload-warnings');
+const elDropZone           = document.getElementById('drop-zone');
+const elFileInput          = document.getElementById('file-input');
+const elRouteList          = document.getElementById('route-list');
+const elRouteCountBadge    = document.getElementById('route-count-badge');
+const elRouteGenerating    = document.getElementById('route-generating');
+const elUploadWarnings     = document.getElementById('upload-warnings');
+const elSelectedRouteLabel = document.getElementById('selected-route-label');
 
-const elEpUpload        = document.getElementById('ep-upload');
-const elEpDraw          = document.getElementById('ep-draw');
-const elDrawHint        = document.getElementById('draw-hint');
-const elDrawStats       = document.getElementById('draw-stats');
-const elDrawWpCount     = document.getElementById('draw-wp-count');
-const elDrawFetching    = document.getElementById('draw-fetching');
-const elBtnUndo         = document.getElementById('btn-undo');
-const elBtnRedo         = document.getElementById('btn-redo');
-const elModeHintRouted  = document.getElementById('draw-mode-hint');
-const elModeHintFree    = document.getElementById('draw-mode-hint-free');
+const elEpUpload           = document.getElementById('ep-upload');
+const elEpDraw             = document.getElementById('ep-draw');
+const elDrawHint           = document.getElementById('draw-hint');
+const elDrawStats          = document.getElementById('draw-stats');
+const elDrawWpCount        = document.getElementById('draw-wp-count');
+const elDrawFetching       = document.getElementById('draw-fetching');
+const elBtnUndo            = document.getElementById('btn-undo');
+const elBtnRedo            = document.getElementById('btn-redo');
+const elModeHintRouted     = document.getElementById('draw-mode-hint');
+const elModeHintFree       = document.getElementById('draw-mode-hint-free');
+
+const elInputStart         = document.getElementById('input-start');
+const elInputEnd           = document.getElementById('input-end');
+const elBtnPickStart       = document.querySelector('.btn-pick[data-target="start"]');
+const elBtnPickEnd         = document.querySelector('.btn-pick[data-target="end"]');
+
+const elPreviewSpinner     = document.getElementById('preview-spinner');
+const elPreviewInfo        = document.getElementById('preview-info');
+const elPreviewPages       = document.getElementById('preview-pages');
+const elPreviewMiles       = document.getElementById('preview-miles');
+const elPreviewWarnings    = document.getElementById('preview-warnings');
+
+const elSelScale           = document.getElementById('sel-scale');
+const elSelPaper           = document.getElementById('sel-paper');
+const elInpOverlap         = document.getElementById('inp-overlap');
+const elInpUtmZone         = document.getElementById('inp-utm-zone');
+
+const elBtnGenerate        = document.getElementById('btn-generate');
+const elGenProgress        = document.getElementById('gen-progress');
+const elGenStatus          = document.getElementById('gen-status');
+const elPickBanner         = document.getElementById('pick-banner');
+const elPickLabel          = document.getElementById('pick-label');
+const elBtnCancelPick      = document.getElementById('btn-cancel-pick');
+
+const elElevPanel          = document.getElementById('elev-panel');
+const elElevName           = document.getElementById('elev-name');
+const elElevStats          = document.getElementById('elev-stats');
+const elElevCanvas         = document.getElementById('elev-canvas');
+const elElevClose          = document.getElementById('elev-close');
 
 // Mode toggle
 function getDrawMode() {
@@ -159,29 +175,6 @@ document.querySelectorAll('input[name="draw-mode"]').forEach(el => {
     elModeHintFree.classList.toggle('hidden', !isFree);
   });
 });
-
-const elInputStart      = document.getElementById('input-start');
-const elInputEnd        = document.getElementById('input-end');
-const elBtnPickStart    = document.querySelector('.btn-pick[data-target="start"]');
-const elBtnPickEnd      = document.querySelector('.btn-pick[data-target="end"]');
-
-const elPreviewSpinner  = document.getElementById('preview-spinner');
-const elPreviewInfo     = document.getElementById('preview-info');
-const elPreviewPages    = document.getElementById('preview-pages');
-const elPreviewMiles    = document.getElementById('preview-miles');
-const elPreviewWarnings = document.getElementById('preview-warnings');
-
-const elSelScale        = document.getElementById('sel-scale');
-const elSelPaper        = document.getElementById('sel-paper');
-const elInpOverlap      = document.getElementById('inp-overlap');
-const elInpUtmZone      = document.getElementById('inp-utm-zone');
-
-const elBtnGenerate     = document.getElementById('btn-generate');
-const elGenProgress     = document.getElementById('gen-progress');
-const elGenStatus       = document.getElementById('gen-status');
-const elPickBanner      = document.getElementById('pick-banner');
-const elPickLabel       = document.getElementById('pick-label');
-const elBtnCancelPick   = document.getElementById('btn-cancel-pick');
 
 // ── Upload-mode markers ────────────────────────────────────────────────────
 function makeMarkerEl(color) {
@@ -208,13 +201,23 @@ elDropZone.addEventListener('click',     () => elFileInput.click());
 elDropZone.addEventListener('dragover',  (e) => { e.preventDefault(); elDropZone.classList.add('drag-over'); });
 elDropZone.addEventListener('dragleave', () => elDropZone.classList.remove('drag-over'));
 elDropZone.addEventListener('drop', (e) => {
-  e.preventDefault(); elDropZone.classList.remove('drag-over');
-  if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  e.preventDefault();
+  elDropZone.classList.remove('drag-over');
+  Array.from(e.dataTransfer.files).forEach(f => addRoute(f));
 });
-elFileInput.addEventListener('change', () => { if (elFileInput.files[0]) handleFile(elFileInput.files[0]); });
+elFileInput.addEventListener('change', () => {
+  Array.from(elFileInput.files).forEach(f => addRoute(f));
+  elFileInput.value = '';
+});
 
-async function handleFile(file) {
+async function addRoute(file) {
+  if (state.routes.length >= 5) {
+    setUploadWarnings(['Maximum 5 routes — remove one first.']);
+    return;
+  }
   setUploadWarnings([]);
+  elRouteGenerating.classList.remove('hidden');
+
   const fd = new FormData();
   fd.append('file', file);
   let data;
@@ -222,32 +225,311 @@ async function handleFile(file) {
     const res = await fetch('/api/route', { method: 'POST', body: fd });
     data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Upload failed');
-  } catch (err) { setUploadWarnings([err.message]); return; }
+  } catch (err) {
+    setUploadWarnings([err.message]);
+    return;
+  } finally {
+    elRouteGenerating.classList.add('hidden');
+  }
 
-  clearDrawing();
-  applyRouteData(data, file.name, 'upload');
+  // Clear drawn route when first upload arrives
+  if (state.routes.length === 0 && state.waypoints.length > 0) {
+    clearDrawing();
+    state.drawnRouteId = null;
+  }
+
+  const route = {
+    routeId:          data.route_id,
+    filename:         file.name,
+    color:            data.color,
+    geojson:          data.geojson,
+    bounds:           data.bounds,
+    startCoord:       data.default_start,
+    endCoord:         data.default_end,
+    elevationProfile: data.elevation_profile || [],
+    distanceMiles:    data.total_distance_miles || 0,
+    gainFt:           data.gain_ft || 0,
+    lossFt:           data.loss_ft || 0,
+    warnings:         data.warnings || [],
+  };
+
+  state.routes.push(route);
+  addRouteLayer(route);
+  renderRouteList();
+
+  // Auto-select first uploaded route
+  if (state.routes.length === 1) selectRoute(0);
+}
+
+function addRouteLayer(route) {
+  if (!map.isStyleLoaded()) { map.once('load', () => addRouteLayer(route)); return; }
+  const srcId = `route-upload-${route.routeId}`;
+  if (map.getSource(srcId)) return;
+  map.addSource(srcId, { type: 'geojson', data: route.geojson });
+  map.addLayer({
+    id: `${srcId}-line`, type: 'line', source: srcId,
+    layout: { 'line-join': 'round', 'line-cap': 'round' },
+    paint: { 'line-color': route.color, 'line-width': 3, 'line-opacity': 0.85 },
+  });
+}
+
+// ── Multi-route management ─────────────────────────────────────────────────
+function selectRoute(idx) {
+  // Dehighlight previously selected
+  if (state.selectedIdx !== null) {
+    const prev = state.routes[state.selectedIdx];
+    if (prev) {
+      map.setPaintProperty(`route-upload-${prev.routeId}-line`, 'line-width', 3);
+      map.setPaintProperty(`route-upload-${prev.routeId}-line`, 'line-opacity', 0.85);
+    }
+  }
+
+  state.selectedIdx = idx;
+  const route = state.routes[idx];
+
+  // Restore full geojson (in case preview had trimmed it)
+  map.getSource(`route-upload-${route.routeId}`)?.setData(route.geojson);
+
+  // Highlight selected
+  map.setPaintProperty(`route-upload-${route.routeId}-line`, 'line-width', 5);
+  map.setPaintProperty(`route-upload-${route.routeId}-line`, 'line-opacity', 1.0);
+
+  // Set as active route
+  state.routeId     = route.routeId;
+  state.routeSource = 'upload';
+  state.startCoord  = route.startCoord;
+  state.endCoord    = route.endCoord;
+
+  if (route.startCoord) setCoord('start', route.startCoord);
+  if (route.endCoord)   setCoord('end',   route.endCoord);
+  if (elSelectedRouteLabel) elSelectedRouteLabel.textContent = route.filename;
+
   setEndpointsMode('upload');
+
+  const [minx, miny, maxx, maxy] = route.bounds;
+  map.fitBounds([[minx, miny], [maxx, maxy]], { padding: 60, duration: 500 });
+
+  if (route.warnings?.length) setUploadWarnings(route.warnings);
+
+  renderRouteList();
+  showElevPanel(route);
+  schedulePreview();
+}
+
+function removeRoute(idx) {
+  const route = state.routes[idx];
+
+  const srcId = `route-upload-${route.routeId}`;
+  if (map.getLayer(`${srcId}-line`)) map.removeLayer(`${srcId}-line`);
+  if (map.getSource(srcId))          map.removeSource(srcId);
+
+  state.routes.splice(idx, 1);
+
+  if (state.selectedIdx === idx) {
+    state.selectedIdx = null;
+    startMarker.remove();
+    endMarker.remove();
+    elInputStart.value = '';
+    elInputEnd.value   = '';
+
+    if (state.routes.length > 0) {
+      selectRoute(Math.min(idx, state.routes.length - 1));
+    } else {
+      hideElevPanel();
+      setEndpointsMode('draw');
+      map.getSource('frames')?.setData(emptyFC());
+      elPreviewInfo.classList.add('hidden');
+      setPreviewWarnings([]);
+      if (state.drawnRouteId) {
+        state.routeId     = state.drawnRouteId;
+        state.routeSource = 'drawn';
+        state.startCoord  = state.waypoints[0] || null;
+        state.endCoord    = state.waypoints[state.waypoints.length - 1] || null;
+        schedulePreview();
+      } else {
+        state.routeId = null; state.routeSource = null;
+        state.startCoord = null; state.endCoord = null;
+        elBtnGenerate.disabled = true;
+      }
+    }
+  } else if (state.selectedIdx !== null && state.selectedIdx > idx) {
+    state.selectedIdx--;
+  }
+
+  renderRouteList();
+  updateDropZone();
+}
+
+function renderRouteList() {
+  elRouteList.innerHTML = '';
+  state.routes.forEach((route, idx) => {
+    const item = document.createElement('div');
+    item.className = 'route-item' + (idx === state.selectedIdx ? ' selected' : '');
+    item.style.setProperty('--route-color', route.color);
+
+    const swatch = document.createElement('div');
+    swatch.className = 'route-swatch';
+    swatch.style.background = route.color;
+
+    const name = document.createElement('span');
+    name.className = 'route-item-name';
+    name.textContent = route.filename;
+    name.title = route.filename;
+
+    const btn = document.createElement('button');
+    btn.className = 'btn-icon';
+    btn.textContent = '✕';
+    btn.title = 'Remove route';
+    btn.addEventListener('click', (e) => { e.stopPropagation(); removeRoute(idx); });
+
+    item.appendChild(swatch);
+    item.appendChild(name);
+    item.appendChild(btn);
+    item.addEventListener('click', () => selectRoute(idx));
+    elRouteList.appendChild(item);
+  });
+
+  elRouteCountBadge.textContent = state.routes.length > 0 ? `(${state.routes.length}/5)` : '';
+  updateDropZone();
+}
+
+function updateDropZone() {
+  elDropZone.classList.toggle('hidden', state.routes.length >= 5);
+}
+
+// ── Elevation panel ────────────────────────────────────────────────────────
+function showElevPanel(route) {
+  elElevName.textContent = route.filename;
+  const dist = route.distanceMiles.toFixed(1);
+  elElevStats.textContent = `${dist} mi · +${Math.round(route.gainFt)} ft / −${Math.round(route.lossFt)} ft`;
+  elElevPanel.classList.remove('hidden');
+  requestAnimationFrame(() => drawElevationProfile(route));
+}
+
+function hideElevPanel() {
+  elElevPanel.classList.add('hidden');
+}
+
+elElevClose.addEventListener('click', () => {
+  hideElevPanel();
+  if (state.selectedIdx !== null) {
+    const prev = state.routes[state.selectedIdx];
+    if (prev) {
+      map.setPaintProperty(`route-upload-${prev.routeId}-line`, 'line-width', 3);
+      map.setPaintProperty(`route-upload-${prev.routeId}-line`, 'line-opacity', 0.85);
+    }
+    state.selectedIdx = null;
+    startMarker.remove();
+    endMarker.remove();
+    elInputStart.value = '';
+    elInputEnd.value   = '';
+    setEndpointsMode('draw');
+    map.getSource('frames')?.setData(emptyFC());
+    elPreviewInfo.classList.add('hidden');
+    setPreviewWarnings([]);
+    if (state.drawnRouteId) {
+      state.routeId = state.drawnRouteId;
+      state.routeSource = 'drawn';
+    } else {
+      state.routeId = null; state.routeSource = null;
+      elBtnGenerate.disabled = true;
+    }
+    renderRouteList();
+  }
+});
+
+function drawElevationProfile(route) {
+  const ctx  = elElevCanvas.getContext('2d');
+  const dpr  = window.devicePixelRatio || 1;
+  const W    = elElevPanel.clientWidth;
+  const H    = elElevPanel.offsetHeight - document.getElementById('elev-header').offsetHeight;
+  elElevCanvas.width        = W * dpr;
+  elElevCanvas.height       = Math.max(H, 10) * dpr;
+  elElevCanvas.style.width  = W + 'px';
+  elElevCanvas.style.height = Math.max(H, 10) + 'px';
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, W, H);
+
+  const prof = route.elevationProfile;
+  if (!prof || prof.length < 2) {
+    ctx.fillStyle = '#666'; ctx.font = '12px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('No elevation data available', W / 2, H / 2);
+    return;
+  }
+
+  const PAD = { top: 10, right: 14, bottom: 26, left: 44 };
+  const cW = W - PAD.left - PAD.right;
+  const cH = H - PAD.top  - PAD.bottom;
+
+  const maxDist   = prof[prof.length - 1].distance_m;
+  const elevs     = prof.map(p => p.elevation_ft);
+  const minElev   = Math.min(...elevs);
+  const maxElev   = Math.max(...elevs);
+  const elevRange = (maxElev - minElev) || 1;
+
+  const xS = d => PAD.left + (d / maxDist) * cW;
+  const yS = e => PAD.top  + cH - ((e - minElev) / elevRange) * cH;
+
+  // Area fill with gradient
+  const grad = ctx.createLinearGradient(0, PAD.top, 0, PAD.top + cH);
+  grad.addColorStop(0, route.color + 'bb');
+  grad.addColorStop(1, route.color + '22');
+  ctx.beginPath();
+  ctx.moveTo(xS(prof[0].distance_m), yS(prof[0].elevation_ft));
+  for (let i = 1; i < prof.length; i++) ctx.lineTo(xS(prof[i].distance_m), yS(prof[i].elevation_ft));
+  ctx.lineTo(xS(maxDist), PAD.top + cH);
+  ctx.lineTo(xS(0), PAD.top + cH);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Profile line
+  ctx.beginPath();
+  ctx.moveTo(xS(prof[0].distance_m), yS(prof[0].elevation_ft));
+  for (let i = 1; i < prof.length; i++) ctx.lineTo(xS(prof[i].distance_m), yS(prof[i].elevation_ft));
+  ctx.strokeStyle = route.color; ctx.lineWidth = 1.5; ctx.stroke();
+
+  // Axes
+  ctx.strokeStyle = '#444'; ctx.lineWidth = 1; ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(PAD.left, PAD.top); ctx.lineTo(PAD.left, PAD.top + cH);
+  ctx.moveTo(PAD.left, PAD.top + cH); ctx.lineTo(PAD.left + cW, PAD.top + cH);
+  ctx.stroke();
+
+  // Y gridlines + labels
+  ctx.font = '9px system-ui'; ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
+  for (let i = 0; i <= 3; i++) {
+    const e = minElev + (i / 3) * elevRange;
+    const y = yS(e);
+    ctx.fillStyle = '#888'; ctx.fillText(Math.round(e) + 'ft', PAD.left - 4, y);
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 0.5; ctx.setLineDash([2, 3]);
+    ctx.beginPath(); ctx.moveTo(PAD.left + 1, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // X labels (miles)
+  ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = '#888';
+  const xN = Math.min(5, Math.max(2, Math.floor(route.distanceMiles)));
+  for (let i = 0; i <= xN; i++) {
+    const d = (i / xN) * maxDist;
+    ctx.fillText((d / 1609.344).toFixed(1) + 'mi', xS(d), PAD.top + cH + 5);
+  }
 }
 
 // ── Draw mode: multi-waypoint ──────────────────────────────────────────────
 async function addWaypoint(latlon) {
   if (state.isFetchingSegment) return;
 
-  const isFirst    = state.waypoints.length === 0;
+  const isFirst      = state.waypoints.length === 0;
   const prevWaypoint = isFirst ? null : state.waypoints[state.waypoints.length - 1];
 
   state.waypoints.push(latlon);
-  state.redoStack = [];        // new action clears redo history
+  state.redoStack = [];
   updateDrawDisplay();
 
   if (!isFirst) {
     if (getDrawMode() === 'freehand') {
-      // Straight line between the two clicks — no routing API needed
-      const segCoords = [
-        [prevWaypoint[1], prevWaypoint[0]],
-        [latlon[1],       latlon[0]],
-      ];
-      state.segmentCoords.push(segCoords);
+      state.segmentCoords.push([[prevWaypoint[1], prevWaypoint[0]], [latlon[1], latlon[0]]]);
       state.segmentDetoured.push(false);
       updateRouteLineFromSegments();
       updateDrawDisplay();
@@ -269,7 +551,6 @@ async function addWaypoint(latlon) {
         segCoords = data.coordinates;
         detoured  = data.detoured || false;
       } catch (err) {
-        // Revert the waypoint we optimistically added
         state.waypoints.pop();
         state.redoStack = [];
         updateDrawDisplay();
@@ -277,7 +558,7 @@ async function addWaypoint(latlon) {
         return;
       } finally {
         state.isFetchingSegment = false;
-        map.getCanvas().style.cursor = 'crosshair';
+        map.getCanvas().style.cursor = state.selectedIdx === null ? 'crosshair' : '';
         elDrawFetching.classList.add('hidden');
       }
 
@@ -295,7 +576,7 @@ function undoWaypoint() {
   if (state.waypoints.length === 0 || state.isFetchingSegment) return;
 
   const wp  = state.waypoints.pop();
-  const seg = state.segmentCoords.length > 0 ? state.segmentCoords.pop() : null;
+  const seg = state.segmentCoords.length  > 0 ? state.segmentCoords.pop()  : null;
   const det = state.segmentDetoured.length > 0 ? state.segmentDetoured.pop() : false;
   state.redoStack.push({ wp, seg, det });
 
@@ -306,46 +587,40 @@ function undoWaypoint() {
   if (state.segmentCoords.length > 0) {
     scheduleCommit();
   } else {
-    // No segments left — drop the route_id so Generate PDF disables
-    state.routeId     = null;
-    state.routeSource = null;
-    setRouteState('empty');
-    elPreviewInfo.classList.add('hidden');
-    setPreviewWarnings([]);
-    elBtnGenerate.disabled = true;
+    state.drawnRouteId = null;
+    if (state.routeSource === 'drawn') {
+      state.routeId = null; state.routeSource = null;
+      elPreviewInfo.classList.add('hidden');
+      setPreviewWarnings([]);
+      elBtnGenerate.disabled = true;
+    }
   }
 }
 
 function redoWaypoint() {
   if (state.redoStack.length === 0 || state.isFetchingSegment) return;
-
   const { wp, seg, det } = state.redoStack.pop();
   state.waypoints.push(wp);
   if (seg) { state.segmentCoords.push(seg); state.segmentDetoured.push(det ?? false); }
-
   updateDrawDisplay();
   updateRouteLineFromSegments();
-
   if (state.segmentCoords.length > 0) scheduleCommit();
 }
 
 // ── Draw display helpers ───────────────────────────────────────────────────
 function updateDrawDisplay() {
-  // Waypoint dots on map
   const n = state.waypoints.length;
   const features = state.waypoints.map((wp, i) => ({
     type: 'Feature',
     geometry: { type: 'Point', coordinates: [wp[1], wp[0]] },
     properties: { isFirst: i === 0, isLast: i === n - 1 && n > 1, idx: i + 1 },
   }));
-  map.getSource('waypoints').setData({ type: 'FeatureCollection', features });
+  map.getSource('waypoints')?.setData({ type: 'FeatureCollection', features });
 
-  // Sidebar stats
   if (n > 0) {
     const s = state.segmentCoords.length;
     const d = state.segmentDetoured.filter(Boolean).length;
-    const detourNote = d > 0 ? ` · ${d} straight-line` : '';
-    elDrawWpCount.textContent = `${n} waypoint${n !== 1 ? 's' : ''} · ${s} segment${s !== 1 ? 's' : ''}${detourNote}`;
+    elDrawWpCount.textContent = `${n} waypoint${n !== 1 ? 's' : ''} · ${s} segment${s !== 1 ? 's' : ''}${d > 0 ? ` · ${d} straight-line` : ''}`;
     elDrawStats.classList.remove('hidden');
     elDrawHint.classList.add('hidden');
   } else {
@@ -359,37 +634,26 @@ function updateDrawDisplay() {
 
 function updateRouteLineFromSegments() {
   const coords = getCombinedCoords();
-  if (coords.length >= 2) {
-    map.getSource('route').setData({
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: coords },
-      properties: {},
-    });
-  } else {
-    map.getSource('route').setData(emptyFC());
-  }
+  map.getSource('route')?.setData(
+    coords.length >= 2
+      ? { type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: {} }
+      : emptyFC()
+  );
 
-  // Detour overlay: one feature per straight-line fallback segment
   const detourFeatures = state.segmentCoords
     .filter((_, i) => state.segmentDetoured[i])
-    .map(seg => ({
-      type: 'Feature',
-      geometry: { type: 'LineString', coordinates: seg },
-      properties: {},
-    }));
+    .map(seg => ({ type: 'Feature', geometry: { type: 'LineString', coordinates: seg }, properties: {} }));
   map.getSource('route-detour')?.setData({ type: 'FeatureCollection', features: detourFeatures });
 }
 
 function getCombinedCoords() {
   if (state.segmentCoords.length === 0) return [];
   const out = [...state.segmentCoords[0]];
-  for (let i = 1; i < state.segmentCoords.length; i++) {
-    out.push(...state.segmentCoords[i].slice(1));
-  }
+  for (let i = 1; i < state.segmentCoords.length; i++) out.push(...state.segmentCoords[i].slice(1));
   return out;
 }
 
-// ── Commit accumulated route to backend ───────────────────────────────────
+// ── Commit drawn route ─────────────────────────────────────────────────────
 function scheduleCommit() {
   clearTimeout(state.commitDebounce);
   state.commitDebounce = setTimeout(commitRoute, 600);
@@ -408,25 +672,29 @@ async function commitRoute() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail);
 
-    state.routeId     = data.route_id;
-    state.routeSource = 'drawn';
+    state.drawnRouteId = data.route_id;
 
-    elRouteFilename.textContent = `Drawn route · ${state.waypoints.length} waypoint${state.waypoints.length !== 1 ? 's' : ''}`;
-    setRouteState('loaded');
-    runPreview();           // preview immediately after commit (no extra debounce)
+    // Only take over as active route if no upload is selected
+    if (state.selectedIdx === null) {
+      state.routeId     = data.route_id;
+      state.routeSource = 'drawn';
+      state.startCoord  = state.waypoints[0];
+      state.endCoord    = state.waypoints[state.waypoints.length - 1];
+      runPreview();
+    }
   } catch (err) {
     setPreviewWarnings([`Failed to save route: ${err.message}`]);
   }
 }
 
-// ── Undo / redo buttons + keyboard ────────────────────────────────────────
+// ── Undo / redo ────────────────────────────────────────────────────────────
 elBtnUndo.addEventListener('click', undoWaypoint);
 elBtnRedo.addEventListener('click', redoWaypoint);
 
 document.addEventListener('keydown', (e) => {
   const mod = e.ctrlKey || e.metaKey;
   if (!mod) return;
-  if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undoWaypoint(); }
+  if (e.key === 'z' && !e.shiftKey)                   { e.preventDefault(); undoWaypoint(); }
   if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) { e.preventDefault(); redoWaypoint(); }
 });
 
@@ -480,7 +748,13 @@ function cancelPickMode() {
 }
 
 function onUploadCoordsChanged() {
-  if (state.startCoord && state.endCoord) schedulePreview();
+  if (state.startCoord && state.endCoord) {
+    if (state.selectedIdx !== null) {
+      state.routes[state.selectedIdx].startCoord = state.startCoord;
+      state.routes[state.selectedIdx].endCoord   = state.endCoord;
+    }
+    schedulePreview();
+  }
 }
 
 // ── Settings changes ───────────────────────────────────────────────────────
@@ -489,7 +763,7 @@ function onUploadCoordsChanged() {
 });
 document.getElementById('lyr-bw').addEventListener('change', () => { if (state.routeId) schedulePreview(); });
 
-// ── Preview (page frames) ──────────────────────────────────────────────────
+// ── Preview ────────────────────────────────────────────────────────────────
 function schedulePreview() {
   clearTimeout(state.previewDebounce);
   state.previewDebounce = setTimeout(runPreview, 400);
@@ -498,17 +772,13 @@ function schedulePreview() {
 async function runPreview() {
   if (!state.routeId) return;
 
-  // Determine start/end for the preview request
   let start, end;
   if (state.routeSource === 'upload') {
     if (!state.startCoord || !state.endCoord) return;
-    start = state.startCoord;
-    end   = state.endCoord;
+    start = state.startCoord; end = state.endCoord;
   } else {
-    // Drawn route: use first and last waypoints
     if (state.waypoints.length < 2) return;
-    start = state.waypoints[0];
-    end   = state.waypoints[state.waypoints.length - 1];
+    start = state.waypoints[0]; end = state.waypoints[state.waypoints.length - 1];
   }
 
   elPreviewSpinner.classList.remove('hidden');
@@ -531,12 +801,14 @@ async function runPreview() {
 
   elPreviewSpinner.classList.add('hidden');
 
-  // For uploaded routes, update the trimmed line; for drawn routes keep the accumulated line
-  if (state.routeSource === 'upload' && data.route_geojson) {
-    map.getSource('route').setData(data.route_geojson);
+  if (state.routeSource === 'upload' && data.route_geojson && state.selectedIdx !== null) {
+    const r = state.routes[state.selectedIdx];
+    map.getSource(`route-upload-${r.routeId}`)?.setData(data.route_geojson);
+  } else if (state.routeSource === 'drawn' && data.route_geojson) {
+    map.getSource('route')?.setData(data.route_geojson);
   }
-  map.getSource('frames').setData(data.frames);
 
+  map.getSource('frames').setData(data.frames);
   elPreviewPages.textContent = `${data.page_count} page${data.page_count !== 1 ? 's' : ''}`;
   elPreviewMiles.textContent = `${data.length_miles} mi`;
   elPreviewInfo.classList.remove('hidden');
@@ -545,12 +817,11 @@ async function runPreview() {
 }
 
 // ── Export ─────────────────────────────────────────────────────────────────
-elBtnSaveGpx.addEventListener('click',     () => triggerExport('gpx'));
-elBtnSaveGeojson.addEventListener('click', () => triggerExport('geojson'));
+document.getElementById('btn-save-gpx').addEventListener('click',     () => triggerExport('gpx'));
+document.getElementById('btn-save-geojson').addEventListener('click', () => triggerExport('geojson'));
 
 function getOutputName() {
-  const raw = document.getElementById('inp-filename').value.trim();
-  // Keep alphanumerics, spaces, hyphens, underscores; collapse to single spaces; trim
+  const raw  = document.getElementById('inp-filename').value.trim();
   const safe = raw.replace(/[^\w\s\-]/g, '').replace(/\s+/g, ' ').trim();
   return safe || 'trail_map';
 }
@@ -558,9 +829,7 @@ function getOutputName() {
 function triggerExport(fmt) {
   if (!state.routeId) return;
   const a = document.createElement('a');
-  a.href = `/api/export/${state.routeId}/${fmt}`;
-  a.download = `${getOutputName()}.${fmt}`;
-  a.click();
+  a.href = `/api/export/${state.routeId}/${fmt}`; a.download = `${getOutputName()}.${fmt}`; a.click();
 }
 
 // ── Generate PDF ───────────────────────────────────────────────────────────
@@ -568,11 +837,8 @@ elBtnGenerate.addEventListener('click', async () => {
   if (!state.routeId) return;
 
   let start, end;
-  if (state.routeSource === 'upload') {
-    start = state.startCoord; end = state.endCoord;
-  } else {
-    start = state.waypoints[0]; end = state.waypoints[state.waypoints.length - 1];
-  }
+  if (state.routeSource === 'upload') { start = state.startCoord; end = state.endCoord; }
+  else { start = state.waypoints[0]; end = state.waypoints[state.waypoints.length - 1]; }
 
   elBtnGenerate.disabled = true;
   elGenProgress.classList.remove('hidden');
@@ -586,7 +852,7 @@ elBtnGenerate.addEventListener('click', async () => {
     });
     if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Generation failed'); }
     const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
+    const url  = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = `${getOutputName()}.pdf`; a.click();
     URL.revokeObjectURL(url);
     showStatus('✓ PDF downloaded', false);
@@ -598,27 +864,33 @@ elBtnGenerate.addEventListener('click', async () => {
   }
 });
 
-// ── Route lifecycle ────────────────────────────────────────────────────────
-function applyRouteData(data, label, source) {
-  state.routeId     = data.route_id;
-  state.routeSource = source;
+// ── Reverse route ──────────────────────────────────────────────────────────
+document.getElementById('btn-reverse-route').addEventListener('click', reverseRoute);
 
-  elRouteFilename.textContent = label;
-  setRouteState('loaded');
+function reverseRoute() {
+  if (!state.routeId) return;
 
-  map.getSource('route').setData(data.geojson);
-  const [minx, miny, maxx, maxy] = data.bounds;
-  map.fitBounds([[minx, miny], [maxx, maxy]], { padding: 60, duration: 500 });
-
-  if (source === 'upload') {
-    setCoord('start', data.default_start);
-    setCoord('end',   data.default_end);
+  if (state.routeSource === 'upload' && state.selectedIdx !== null) {
+    const route = state.routes[state.selectedIdx];
+    [route.startCoord, route.endCoord] = [route.endCoord, route.startCoord];
+    state.startCoord = route.startCoord;
+    state.endCoord   = route.endCoord;
+    if (route.startCoord) setCoord('start', route.startCoord);
+    if (route.endCoord)   setCoord('end',   route.endCoord);
+    onUploadCoordsChanged();
+  } else if (state.routeSource === 'drawn') {
+    state.waypoints.reverse();
+    state.segmentCoords.reverse();
+    state.segmentCoords.forEach(seg => seg.reverse());
+    state.segmentDetoured.reverse();
+    state.redoStack = [];
+    updateRouteLineFromSegments();
+    updateDrawDisplay();
+    scheduleCommit();
   }
-
-  if (data.warnings?.length) setUploadWarnings(data.warnings);
-  schedulePreview();
 }
 
+// ── Clear drawing ──────────────────────────────────────────────────────────
 function clearDrawing() {
   state.waypoints        = [];
   state.segmentCoords    = [];
@@ -632,68 +904,13 @@ function clearDrawing() {
   updateDrawDisplay();
 }
 
-elBtnClearRoute.addEventListener('click', clearRoute);
-document.getElementById('btn-reverse-route').addEventListener('click', reverseRoute);
-
-function reverseRoute() {
-  if (!state.routeId) return;
-
-  if (state.routeSource === 'upload') {
-    [state.startCoord, state.endCoord] = [state.endCoord, state.startCoord];
-    if (state.startCoord) setCoord('start', state.startCoord);
-    if (state.endCoord)   setCoord('end',   state.endCoord);
-    onUploadCoordsChanged();
-  } else {
-    // Reverse waypoints and segments in-place
-    state.waypoints.reverse();
-    state.segmentCoords.reverse();
-    state.segmentCoords.forEach(seg => seg.reverse());
-    state.segmentDetoured.reverse();
-    state.redoStack = [];
-
-    updateRouteLineFromSegments();
-    updateDrawDisplay();
-    scheduleCommit();
-  }
-}
-
-function clearRoute() {
-  state.routeId     = null;
-  state.routeSource = null;
-  state.startCoord  = null;
-  state.endCoord    = null;
-
-  clearDrawing();
-  cancelPickMode();
-  startMarker.remove();
-  endMarker.remove();
-  elInputStart.value = '';
-  elInputEnd.value   = '';
-  elFileInput.value  = '';
-
-  setRouteState('empty');
-  setEndpointsMode('draw');
-  map.getSource('frames')?.setData(emptyFC());
-  elPreviewInfo.classList.add('hidden');
-  setUploadWarnings([]);
-  setPreviewWarnings([]);
-  elBtnGenerate.disabled = true;
-}
-
-// ── UI state helpers ───────────────────────────────────────────────────────
-function setRouteState(s) {
-  elRouteEmpty.classList.toggle('hidden',      s !== 'empty');
-  elRouteGenerating.classList.toggle('hidden', s !== 'generating');
-  elRouteLoaded.classList.toggle('hidden',     s !== 'loaded');
-}
-
+// ── UI helpers ─────────────────────────────────────────────────────────────
 function setEndpointsMode(mode) {
   elEpUpload.classList.toggle('hidden', mode !== 'upload');
   elEpDraw.classList.toggle('hidden',   mode !== 'draw');
   if (mode !== 'upload') cancelPickMode();
 }
 
-// ── Request builders ───────────────────────────────────────────────────────
 function buildSettingsBody() {
   const [size, orient] = elSelPaper.value.split('_');
   return {
@@ -719,7 +936,6 @@ function buildLayers() {
   };
 }
 
-// ── Misc helpers ───────────────────────────────────────────────────────────
 function emptyFC() { return { type: 'FeatureCollection', features: [] }; }
 
 function setUploadWarnings(msgs) {
@@ -744,8 +960,7 @@ function showDetourToast() {
   let toast = document.getElementById('detour-toast');
   if (!toast) {
     toast = document.createElement('div');
-    toast.id = 'detour-toast';
-    toast.className = 'detour-toast';
+    toast.id = 'detour-toast'; toast.className = 'detour-toast';
     document.body.appendChild(toast);
   }
   toast.textContent = 'Trail routing unavailable here — segment shown as straight line (orange dashed). Add more waypoints or switch to Freehand.';

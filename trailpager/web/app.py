@@ -23,8 +23,10 @@ from trailpager.config import Settings
 
 app = FastAPI(title="MyRoute")
 
-# In-memory store: route_id → { "path": Path }
+# In-memory store: route_id → { "path": Path, "color": str, ... }
 _routes: dict[str, dict] = {}
+
+_ROUTE_COLORS = ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6"]
 
 _STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
@@ -153,8 +155,9 @@ async def upload_route(file: UploadFile = File(...)) -> JSONResponse:
         route_path.unlink(missing_ok=True)
         raise HTTPException(422, f"Could not read route: {exc}")
 
+    color = _ROUTE_COLORS[len(_routes) % len(_ROUTE_COLORS)]
     route_id = str(uuid.uuid4())
-    _routes[route_id] = {"path": route_path}
+    _routes[route_id] = {"path": route_path, "color": color}
 
     coords = list(route_data.line.coords)  # (lon, lat) in WGS84
     geojson_coords = [[round(lon, 6), round(lat, 6)] for lon, lat in coords]
@@ -163,8 +166,14 @@ async def upload_route(file: UploadFile = File(...)) -> JSONResponse:
     end_lonlat = geojson_coords[-1]
     bounds = list(route_data.line.bounds)  # [minx, miny, maxx, maxy]
 
+    elev_profile = [
+        {"distance_m": round(p.distance_m, 1), "elevation_ft": round(p.elevation_ft, 1)}
+        for p in route_data.elevation_profile
+    ]
+
     return JSONResponse({
         "route_id": route_id,
+        "color": color,
         "geojson": {
             "type": "Feature",
             "geometry": {"type": "LineString", "coordinates": geojson_coords},
@@ -173,6 +182,10 @@ async def upload_route(file: UploadFile = File(...)) -> JSONResponse:
         "bounds": bounds,
         "default_start": [round(start_lonlat[1], 6), round(start_lonlat[0], 6)],
         "default_end": [round(end_lonlat[1], 6), round(end_lonlat[0], 6)],
+        "elevation_profile": elev_profile,
+        "total_distance_miles": round(route_data.total_distance_miles, 2),
+        "gain_ft": round(route_data.gain_ft),
+        "loss_ft": round(route_data.loss_ft),
         "warnings": caught_warnings,
     })
 

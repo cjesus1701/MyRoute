@@ -78,11 +78,48 @@ html, body { height: 100%; overflow: hidden; font-family: system-ui, sans-serif;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Route loaded ───────────────────────────────────────── */
+/* ── Route list ─────────────────────────────────────────── */
+#route-list { margin-bottom: 8px; display: flex; flex-direction: column; gap: 4px; }
+.route-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 8px; border-radius: 5px;
+  border: 1px solid var(--border); cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.route-item:hover { background: var(--bg3); }
+.route-item.selected { border-color: var(--route-color, var(--accent)); background: color-mix(in srgb, var(--route-color, var(--accent)) 12%, transparent); }
+.route-swatch { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.route-item-name { flex: 1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.route-item .btn-icon { padding: 1px 4px; font-size: 12px; opacity: 0.6; }
+.route-item:hover .btn-icon { opacity: 1; }
+
+/* ── Route loaded (shared) ──────────────────────────────── */
 .info-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 #route-filename { flex: 1; font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .btn-icon { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 3px; }
 .btn-icon:hover { color: var(--text); background: var(--bg3); }
+
+/* ── Elevation panel ────────────────────────────────────── */
+#elev-panel {
+  position: fixed;
+  left: var(--sidebar-w); right: 0; bottom: 0;
+  height: 170px;
+  background: rgba(20, 20, 20, 0.95);
+  border-top: 1px solid var(--border);
+  z-index: 15;
+  display: flex; flex-direction: column;
+  backdrop-filter: blur(6px);
+  transition: transform 0.25s;
+}
+#elev-panel.hidden { display: none; }
+#elev-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 12px; flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+}
+#elev-name { font-size: 12px; font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#elev-stats { font-size: 11px; color: var(--text-dim); white-space: nowrap; }
+#elev-canvas { flex: 1; width: 100%; display: block; }
 
 .export-row { display: flex; gap: 6px; }
 .btn-secondary {
