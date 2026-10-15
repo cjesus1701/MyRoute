@@ -274,6 +274,12 @@ const elElevFetching       = document.getElementById('elev-fetching');
 const elElevTab            = document.getElementById('elev-tab');
 const elElevTabStats       = document.getElementById('elev-tab-stats');
 
+// Elevation profile cursor (map marker + chart crosshair)
+let _elevCursorFrac  = null;
+let _elevCursorRafId = null;
+const _elevCursorEl  = (() => { const el = document.createElement('div'); el.className = 'elev-cursor-pin'; return el; })();
+const _elevCursorMarker = new maplibregl.Marker({ element: _elevCursorEl, anchor: 'center' });
+
 const elBtnSettings        = document.getElementById('btn-settings');
 const elSettingsDrawer     = document.getElementById('settings-drawer');
 const elSidebarBody        = document.getElementById('sidebar-body');
@@ -751,6 +757,8 @@ function showElevPanel(route) {
 }
 
 function hideElevPanel() {
+  _elevCursorFrac = null;
+  _elevCursorMarker.remove();
   elElevPanel.classList.add('hidden');
   updateElevTab();
 }
@@ -887,7 +895,110 @@ function drawElevationProfile(route) {
     const d = (i / xN) * maxDist;
     ctx.fillText((d / 1609.344).toFixed(1) + 'mi', xS(d), PAD.top + cH + 5);
   }
+
+  // Cursor overlay: vertical line + dot on profile curve
+  if (_elevCursorFrac !== null) {
+    const cx = xS(_elevCursorFrac * maxDist);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(120,120,120,0.65)';
+    ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(cx, PAD.top); ctx.lineTo(cx, PAD.top + cH); ctx.stroke();
+    ctx.setLineDash([]);
+    const cy = yS(_elevAtFrac(prof, _elevCursorFrac));
+    ctx.beginPath(); ctx.arc(cx, cy, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#fff'; ctx.fill();
+    ctx.strokeStyle = route.color; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+  }
 }
+
+// ── Elevation profile ↔ map cursor ────────────────────────────────────────
+
+// Interpolate elevation_ft at a 0-1 fraction along the profile
+function _elevAtFrac(prof, frac) {
+  const maxD = prof[prof.length - 1].distance_m;
+  const target = frac * maxD;
+  let lo = 0, hi = prof.length - 1;
+  while (lo < hi - 1) { const mid = (lo + hi) >> 1; if (prof[mid].distance_m <= target) lo = mid; else hi = mid; }
+  const span = prof[lo + 1].distance_m - prof[lo].distance_m;
+  if (span === 0) return prof[lo].elevation_ft;
+  return prof[lo].elevation_ft + ((target - prof[lo].distance_m) / span) * (prof[lo + 1].elevation_ft - prof[lo].elevation_ft);
+}
+
+// Extract [lng, lat] coordinate array from a route (both upload and drawn)
+function _routeLineCoords(route) {
+  if (route.kind === 'drawn') {
+    const isSelected = state.selectedIdx !== null && state.routes[state.selectedIdx] === route;
+    const segs = isSelected ? state.segmentCoords : (route._segmentCoords || []);
+    if (!segs.length) return null;
+    const out = [...segs[0]];
+    for (let i = 1; i < segs.length; i++) out.push(...segs[i].slice(1));
+    return out.length >= 2 ? out : null;
+  }
+  if (!route.geojson) return null;
+  const features = route.geojson.type === 'FeatureCollection' ? route.geojson.features
+    : route.geojson.type === 'Feature' ? [route.geojson] : [];
+  const line = features.find(f => f.geometry &&
+    (f.geometry.type === 'LineString' || f.geometry.type === 'MultiLineString'));
+  if (!line) return null;
+  return line.geometry.type === 'LineString'
+    ? line.geometry.coordinates
+    : line.geometry.coordinates.flat();
+}
+
+function _haversineM(c1, c2) {
+  const R = 6371000, r = Math.PI / 180;
+  const dLat = (c2[1] - c1[1]) * r, dLon = (c2[0] - c1[0]) * r;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(c1[1] * r) * Math.cos(c2[1] * r) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Return [lng, lat] on the route at a 0-1 fraction of its total length
+function _routeCoordAtFrac(route, frac) {
+  const coords = _routeLineCoords(route);
+  if (!coords || coords.length < 2) return null;
+  // Cache cumulative distances keyed by coord count (invalidates when route changes)
+  if (!route._ccache || route._ccache.n !== coords.length) {
+    const dists = [0];
+    for (let i = 1; i < coords.length; i++)
+      dists.push(dists[i - 1] + _haversineM(coords[i - 1], coords[i]));
+    route._ccache = { n: coords.length, dists };
+  }
+  const { dists } = route._ccache;
+  const total = dists[dists.length - 1];
+  if (total === 0) return coords[0].slice(0, 2);
+  const target = frac * total;
+  let lo = 0, hi = dists.length - 1;
+  while (lo < hi - 1) { const mid = (lo + hi) >> 1; if (dists[mid] <= target) lo = mid; else hi = mid; }
+  const span = dists[lo + 1] - dists[lo];
+  const t = span > 0 ? Math.min(1, (target - dists[lo]) / span) : 0;
+  return [coords[lo][0] + t * (coords[lo + 1][0] - coords[lo][0]),
+          coords[lo][1] + t * (coords[lo + 1][1] - coords[lo][1])];
+}
+
+const _ELEV_PAD_L = 44, _ELEV_PAD_R = 14; // must match PAD in drawElevationProfile
+
+elElevCanvas.addEventListener('mousemove', (e) => {
+  const route = state.selectedIdx !== null ? state.routes[state.selectedIdx] : null;
+  if (!route?.elevationProfile?.length || route.elevationProfile.length < 2) return;
+  const rect = elElevCanvas.getBoundingClientRect();
+  const frac = Math.max(0, Math.min(1, (e.clientX - rect.left - _ELEV_PAD_L) / (rect.width - _ELEV_PAD_L - _ELEV_PAD_R)));
+  // Update map marker position
+  const lngLat = _routeCoordAtFrac(route, frac);
+  if (lngLat) _elevCursorMarker.setLngLat(lngLat).addTo(map);
+  // Redraw chart with cursor (throttled to rAF)
+  if (_elevCursorFrac === frac) return;
+  _elevCursorFrac = frac;
+  if (_elevCursorRafId) cancelAnimationFrame(_elevCursorRafId);
+  _elevCursorRafId = requestAnimationFrame(() => { drawElevationProfile(route); _elevCursorRafId = null; });
+});
+
+elElevCanvas.addEventListener('mouseleave', () => {
+  _elevCursorFrac = null;
+  _elevCursorMarker.remove();
+  const route = state.selectedIdx !== null ? state.routes[state.selectedIdx] : null;
+  if (route) requestAnimationFrame(() => drawElevationProfile(route));
+});
 
 // ── Draw mode: multi-waypoint ──────────────────────────────────────────────
 async function addWaypoint(latlon) {
