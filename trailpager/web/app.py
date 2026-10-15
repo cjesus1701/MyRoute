@@ -15,7 +15,7 @@ matplotlib.use("Agg")   # non-interactive backend; must be set before any pyplot
 
 import requests as _requests
 from fastapi import FastAPI, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -55,6 +55,10 @@ class PreviewRequest(BaseModel):
 class PointsRequest(BaseModel):
     start: list[float]   # [lat, lon]
     end: list[float]
+
+
+class ElevationRequest(BaseModel):
+    coordinates: list[list[float]]  # [[lon, lat], ...]
 
 
 class GenerateRequest(BaseModel):
@@ -569,6 +573,78 @@ async def route_commit(req: CommitRequest) -> JSONResponse:
     return JSONResponse({"route_id": route_id, "bounds": bounds})
 
 
+def _fetch_elevation_profile(coords: list[list[float]]) -> list[dict]:
+    """Sample elevation along [lon, lat] coords via OpenTopoData (max 100 pts)."""
+    from trailpager.route.loader import _haversine_m
+
+    n = len(coords)
+    if n > 100:
+        indices = [int(i * (n - 1) / 99) for i in range(100)]
+        sample = [coords[i] for i in indices]
+    else:
+        sample = coords
+
+    locations = "|".join(f"{lat},{lon}" for lon, lat in sample)
+
+    results = None
+    for dataset in ("ned10m", "srtm30m"):
+        try:
+            resp = _requests.get(
+                f"https://api.opentopodata.org/v1/{dataset}",
+                params={"locations": locations},
+                timeout=20,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if data.get("status") == "OK":
+                results = data["results"]
+                break
+        except Exception:
+            continue
+
+    if not results:
+        return []
+
+    cum_dist = 0.0
+    profile: list[dict] = []
+    for i, (r, coord) in enumerate(zip(results, sample)):
+        lon, lat = coord
+        if i > 0:
+            prev_lon, prev_lat = sample[i - 1]
+            cum_dist += _haversine_m(prev_lat, prev_lon, lat, lon)
+        elev_m = r.get("elevation") or 0.0
+        profile.append({"distance_m": round(cum_dist, 1), "elevation_ft": round(elev_m * 3.28084, 1)})
+
+    return profile
+
+
+@app.post("/api/elevation")
+async def get_elevation(req: ElevationRequest) -> JSONResponse:
+    """Return an elevation profile for an arbitrary coordinate list."""
+    if len(req.coordinates) < 2:
+        raise HTTPException(422, "Need at least 2 coordinates.")
+
+    loop = asyncio.get_event_loop()
+    try:
+        profile = await loop.run_in_executor(None, _fetch_elevation_profile, req.coordinates)
+    except Exception as exc:
+        raise HTTPException(500, f"Elevation fetch failed: {exc}")
+
+    if not profile:
+        return JSONResponse({"elevation_profile": [], "total_distance_miles": 0, "gain_ft": 0, "loss_ft": 0})
+
+    elevs = [p["elevation_ft"] for p in profile]
+    gain = sum(max(0.0, elevs[i] - elevs[i - 1]) for i in range(1, len(elevs)))
+    loss = sum(max(0.0, elevs[i - 1] - elevs[i]) for i in range(1, len(elevs)))
+
+    return JSONResponse({
+        "elevation_profile": profile,
+        "total_distance_miles": round(profile[-1]["distance_m"] / 1609.344, 2),
+        "gain_ft": round(gain),
+        "loss_ft": round(loss),
+    })
+
+
 @app.get("/api/export/{route_id}/geojson")
 async def export_geojson(route_id: str) -> StreamingResponse:
     """Download the stored route as GeoJSON."""
@@ -610,4 +686,19 @@ async def export_gpx(route_id: str) -> StreamingResponse:
         io.BytesIO(content),
         media_type="application/gpx+xml",
         headers={"Content-Disposition": 'attachment; filename="route.gpx"'},
+    )
+
+
+@app.get("/api/terrain/{z}/{x}/{y}.png")
+async def terrain_tile(z: int, x: int, y: int) -> Response:
+    """Proxy Mapzen/AWS terrarium elevation tiles, adding same-origin CORS."""
+    url = f"https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"
+    loop = asyncio.get_event_loop()
+    r = await loop.run_in_executor(None, lambda: _requests.get(url, timeout=10))
+    if r.status_code != 200:
+        raise HTTPException(status_code=404, detail="Terrain tile not found")
+    return Response(
+        content=r.content,
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
     )

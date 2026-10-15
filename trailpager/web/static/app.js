@@ -48,7 +48,7 @@ const map = new maplibregl.Map({
 map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
 map.addControl(new maplibregl.ScaleControl({ unit: 'imperial' }), 'bottom-left');
 
-map.on('load', () => {
+map.on('load', async () => {
   // Drawn route line
   map.addSource('route', { type: 'geojson', data: emptyFC() });
   map.addLayer({
@@ -93,6 +93,100 @@ map.on('load', () => {
     layout: { 'text-field': ['to-string', ['get', 'idx']], 'text-size': 9, 'text-font': ['Open Sans Bold', 'Arial Unicode MS Bold'], 'text-anchor': 'center', 'text-allow-overlap': true },
     paint: { 'text-color': '#fff' },
   });
+
+  // ── Terrain DEM — Mapzen/AWS terrarium tiles (elevation queries + hillshade)
+  map.addSource('terrain-dem', {
+    type: 'raster-dem',
+    tiles: ['/api/terrain/{z}/{x}/{y}.png'],
+    encoding: 'terrarium',
+    tileSize: 256,
+    maxzoom: 15,
+    attribution: '© Mapzen, USGS, SRTM',
+  });
+  map.setTerrain({ source: 'terrain-dem', exaggeration: 1 });
+
+  map.addLayer({
+    id: 'terrain-hillshade',
+    type: 'hillshade',
+    source: 'terrain-dem',
+    paint: {
+      'hillshade-exaggeration': 0.35,
+      'hillshade-illumination-direction': 315,
+      'hillshade-shadow-color': '#000000',
+      'hillshade-highlight-color': '#ffffff',
+    },
+  }, 'route-line');
+
+  // ── Client-side vector contours via maplibre-contour (100 ft intervals, zoom ≥ 15)
+  // zoom 15 ≈ scale bar showing ≤ 1000 ft at US latitudes
+  try {
+    const { DemSource } = await import('https://esm.sh/maplibre-contour');
+    const demContour = new DemSource({
+      url: '/api/terrain/{z}/{x}/{y}.png',
+      encoding: 'terrarium',
+      maxzoom: 15,
+      worker: false,
+    });
+    demContour.setupMaplibre(map);
+    map.addSource('contours', demContour.contourSource({
+      thresholds: {
+        15: [30.48, 152.4], // 100 ft minor, 500 ft (every 5th) major
+      },
+      elevationKey: 'ele',
+      levelKey: 'level',
+      contourLayer: 'contours',
+    }));
+    map.addLayer({
+      id: 'contours-layer',
+      type: 'line',
+      source: 'contours',
+      'source-layer': 'contours',
+      minzoom: 15,
+      filter: ['==', ['get', 'level'], 0],
+      paint: {
+        'line-color': '#7a5c2e',
+        'line-width': 0.6,
+        'line-opacity': 0.65,
+      },
+    }, 'route-line');
+    map.addLayer({
+      id: 'contours-major-layer',
+      type: 'line',
+      source: 'contours',
+      'source-layer': 'contours',
+      minzoom: 15,
+      filter: ['==', ['get', 'level'], 1],
+      paint: {
+        'line-color': '#5a3e14',
+        'line-width': 1.2,
+        'line-opacity': 0.85,
+      },
+    }, 'route-line');
+    map.addLayer({
+      id: 'contours-label-layer',
+      type: 'symbol',
+      source: 'contours',
+      'source-layer': 'contours',
+      minzoom: 15,
+      filter: ['==', ['get', 'level'], 1],
+      layout: {
+        'symbol-placement': 'line',
+        'text-field': ['concat', ['to-string', ['round', ['*', ['get', 'ele'], 3.28084]]], ' ft'],
+        'text-size': 9,
+        'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+        'text-max-angle': 30,
+        'text-pitch-alignment': 'map',
+        'text-rotation-alignment': 'map',
+      },
+      paint: {
+        'text-color': '#5a3e14',
+        'text-halo-color': 'rgba(255,255,255,0.8)',
+        'text-halo-width': 1.2,
+      },
+    }, 'route-line');
+  } catch (err) {
+    console.warn('maplibre-contour unavailable, contours disabled:', err);
+  }
 });
 
 // ── Map click dispatcher ───────────────────────────────────────────────────
@@ -102,18 +196,24 @@ map.on('click', (e) => {
     setCoord(state.pickMode, [lat, lng]);
     cancelPickMode();
     onUploadCoordsChanged();
-  } else if (state.selectedIdx === null) {
+  } else if (_selectedDrawnRoute()) {
     addWaypoint([lat, lng]);
   }
 });
 
 map.on('mousemove', () => {
-  if (!state.pickMode && state.selectedIdx === null && !state.isFetchingSegment) {
+  if (!state.pickMode && _selectedDrawnRoute() && !state.isFetchingSegment) {
     map.getCanvas().style.cursor = 'crosshair';
   } else if (!state.pickMode) {
     map.getCanvas().style.cursor = '';
   }
 });
+
+function _selectedDrawnRoute() {
+  if (state.selectedIdx === null) return null;
+  const r = state.routes[state.selectedIdx];
+  return r?.kind === 'drawn' ? r : null;
+}
 
 // ── DOM refs ───────────────────────────────────────────────────────────────
 const elDropZone           = document.getElementById('drop-zone');
@@ -163,6 +263,13 @@ const elElevName           = document.getElementById('elev-name');
 const elElevStats          = document.getElementById('elev-stats');
 const elElevCanvas         = document.getElementById('elev-canvas');
 const elElevClose          = document.getElementById('elev-close');
+const elElevFetching       = document.getElementById('elev-fetching');
+const elElevTab            = document.getElementById('elev-tab');
+const elElevTabStats       = document.getElementById('elev-tab-stats');
+
+const elBtnSettings        = document.getElementById('btn-settings');
+const elSettingsDrawer     = document.getElementById('settings-drawer');
+const elSidebarBody        = document.getElementById('sidebar-body');
 
 // Mode toggle
 function getDrawMode() {
@@ -176,12 +283,35 @@ document.querySelectorAll('input[name="draw-mode"]').forEach(el => {
   });
 });
 
+// ── Settings drawer toggle ─────────────────────────────────────────────────
+elBtnSettings.addEventListener('click', () => {
+  const isOpen = !elSettingsDrawer.classList.contains('hidden');
+  elSettingsDrawer.classList.toggle('hidden', isOpen);
+  elSidebarBody.classList.toggle('hidden', !isOpen);
+  elBtnSettings.style.color = isOpen ? '' : 'var(--accent)';
+});
+
+// ── DOM refs (draw endpoints) ──────────────────────────────────────────────
+const elDrawEndpoints  = document.getElementById('draw-endpoints');
+const elDrawStartCoord = document.getElementById('draw-start-coord');
+const elDrawEndCoord   = document.getElementById('draw-end-coord');
+const elBtnReverseDraw = document.getElementById('btn-reverse-drawn');
+
 // ── Upload-mode markers ────────────────────────────────────────────────────
 function makeMarkerEl(color) {
   const el = document.createElement('div');
   el.style.cssText = `width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);cursor:grab`;
   return el;
 }
+
+// ── Drawn-route start / end pin markers ────────────────────────────────────
+function _makeDrawnPinEl(color) {
+  const el = document.createElement('div');
+  el.style.cssText = `width:16px;height:16px;border-radius:50%;background:${color};border:2.5px solid #fff;box-shadow:0 2px 7px rgba(0,0,0,.6)`;
+  return el;
+}
+const drawnStartMarker = new maplibregl.Marker({ element: _makeDrawnPinEl('#27ae60'), anchor: 'center' });
+const drawnEndMarker   = new maplibregl.Marker({ element: _makeDrawnPinEl('#c0392b'), anchor: 'center' });
 const startMarker = new maplibregl.Marker({ element: makeMarkerEl('#27ae60'), draggable: true });
 const endMarker   = new maplibregl.Marker({ element: makeMarkerEl('#c0392b'), draggable: true });
 
@@ -232,15 +362,17 @@ async function addRoute(file) {
     elRouteGenerating.classList.add('hidden');
   }
 
-  // Clear drawn route when first upload arrives
-  if (state.routes.length === 0 && state.waypoints.length > 0) {
+  // Clear orphaned drawing state (no drawn route in the list)
+  const hasDrawnRoute = state.routes.some(r => r.kind === 'drawn');
+  if (!hasDrawnRoute && state.waypoints.length > 0) {
     clearDrawing();
     state.drawnRouteId = null;
   }
 
   const route = {
     routeId:          data.route_id,
-    filename:         file.name,
+    kind:             'upload',
+    filename:         file.name.replace(/\.[^.]+$/, ''),
     color:            data.color,
     geojson:          data.geojson,
     bounds:           data.bounds,
@@ -257,8 +389,8 @@ async function addRoute(file) {
   addRouteLayer(route);
   renderRouteList();
 
-  // Auto-select first uploaded route
-  if (state.routes.length === 1) selectRoute(0);
+  // Auto-select first uploaded route if nothing is active
+  if (state.selectedIdx === null) selectRoute(state.routes.length - 1);
 }
 
 function addRouteLayer(route) {
@@ -275,10 +407,13 @@ function addRouteLayer(route) {
 
 // ── Multi-route management ─────────────────────────────────────────────────
 function selectRoute(idx) {
-  // Dehighlight previously selected
+  // Save / deselect previous
   if (state.selectedIdx !== null) {
     const prev = state.routes[state.selectedIdx];
-    if (prev) {
+    if (prev?.kind === 'drawn') {
+      _saveDrawnState(prev);
+      _syncDrawnLayer(prev);
+    } else if (prev?.kind === 'upload') {
       map.setPaintProperty(`route-upload-${prev.routeId}-line`, 'line-width', 3);
       map.setPaintProperty(`route-upload-${prev.routeId}-line`, 'line-opacity', 0.85);
     }
@@ -287,41 +422,144 @@ function selectRoute(idx) {
   state.selectedIdx = idx;
   const route = state.routes[idx];
 
-  // Restore full geojson (in case preview had trimmed it)
-  map.getSource(`route-upload-${route.routeId}`)?.setData(route.geojson);
+  if (route.kind === 'drawn') {
+    _loadDrawnState(route);
+    state.routeId     = route.routeId;
+    state.routeSource = route.routeId ? 'drawn' : null;
+    state.startCoord  = route.startCoord;
+    state.endCoord    = route.endCoord;
 
-  // Highlight selected
-  map.setPaintProperty(`route-upload-${route.routeId}-line`, 'line-width', 5);
-  map.setPaintProperty(`route-upload-${route.routeId}-line`, 'line-opacity', 1.0);
+    map.setPaintProperty('route-line', 'line-color', route.color);
+    const permId = `route-drawn-${route.routeId}-line`;
+    if (map.getLayer(permId)) map.setPaintProperty(permId, 'line-opacity', 0);
 
-  // Set as active route
-  state.routeId     = route.routeId;
-  state.routeSource = 'upload';
-  state.startCoord  = route.startCoord;
-  state.endCoord    = route.endCoord;
+    updateRouteLineFromSegments();
+    updateDrawDisplay();
+    setEndpointsMode('draw');
+    if (route.elevationProfile?.length >= 2) showElevPanel(route);
+    else hideElevPanel();
+    if (route.bounds) {
+      const [minx, miny, maxx, maxy] = route.bounds;
+      map.fitBounds([[minx, miny], [maxx, maxy]], { padding: 60, duration: 500 });
+    }
+    if (route.routeId) schedulePreview();
 
-  if (route.startCoord) setCoord('start', route.startCoord);
-  if (route.endCoord)   setCoord('end',   route.endCoord);
-  if (elSelectedRouteLabel) elSelectedRouteLabel.textContent = route.filename;
+  } else {
+    // Upload route
+    map.getSource(`route-upload-${route.routeId}`)?.setData(route.geojson);
+    map.setPaintProperty(`route-upload-${route.routeId}-line`, 'line-width', 5);
+    map.setPaintProperty(`route-upload-${route.routeId}-line`, 'line-opacity', 1.0);
 
-  setEndpointsMode('upload');
+    state.routeId     = route.routeId;
+    state.routeSource = 'upload';
+    state.startCoord  = route.startCoord;
+    state.endCoord    = route.endCoord;
 
-  const [minx, miny, maxx, maxy] = route.bounds;
-  map.fitBounds([[minx, miny], [maxx, maxy]], { padding: 60, duration: 500 });
+    if (route.startCoord) setCoord('start', route.startCoord);
+    if (route.endCoord)   setCoord('end',   route.endCoord);
+    if (elSelectedRouteLabel) elSelectedRouteLabel.textContent = route.filename;
 
-  if (route.warnings?.length) setUploadWarnings(route.warnings);
+    // Clear the shared drawing canvas so the drawn-route line doesn't linger
+    map.getSource('waypoints')?.setData(emptyFC());
+    map.getSource('route')?.setData(emptyFC());
+    map.getSource('route-detour')?.setData(emptyFC());
+
+    setEndpointsMode('upload');
+
+    const [minx, miny, maxx, maxy] = route.bounds;
+    map.fitBounds([[minx, miny], [maxx, maxy]], { padding: 60, duration: 500 });
+
+    if (route.warnings?.length) setUploadWarnings(route.warnings);
+
+    showElevPanel(route);
+    schedulePreview();
+  }
 
   renderRouteList();
-  showElevPanel(route);
-  schedulePreview();
+}
+
+function _saveDrawnState(route) {
+  route._waypoints       = [...state.waypoints];
+  route._segmentCoords   = state.segmentCoords.map(s => [...s]);
+  route._segmentDetoured = [...state.segmentDetoured];
+}
+
+function _loadDrawnState(route) {
+  state.waypoints       = [...(route._waypoints       || [])];
+  state.segmentCoords   = (route._segmentCoords || []).map(s => [...s]);
+  state.segmentDetoured = [...(route._segmentDetoured || [])];
+  state.redoStack       = [];
+}
+
+function _syncDrawnLayer(route) {
+  if (!route.routeId) return;
+  const coords = getCombinedCoords();
+  if (coords.length < 2) return;
+  const srcId  = `route-drawn-${route.routeId}`;
+  const gj     = { type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: {} };
+  if (map.getSource(srcId)) {
+    map.getSource(srcId).setData(gj);
+  } else {
+    map.addSource(srcId, { type: 'geojson', data: gj });
+    map.addLayer({
+      id: `${srcId}-line`, type: 'line', source: srcId,
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint: { 'line-color': route.color, 'line-width': 3, 'line-opacity': 0.85 },
+    });
+  }
+  map.setPaintProperty(`${srcId}-line`, 'line-opacity', 0.85);
+  map.getSource('waypoints')?.setData(emptyFC());
+  map.getSource('route')?.setData(emptyFC());
+  map.getSource('route-detour')?.setData(emptyFC());
+  drawnStartMarker.remove();
+  drawnEndMarker.remove();
+}
+
+function addDrawnRoute() {
+  if (state.routes.length >= 5) return;
+  const usedColors = new Set(state.routes.map(r => r.color));
+  const color = _COLOR_PALETTE.find(c => !usedColors.has(c)) || _COLOR_PALETTE[state.routes.length % _COLOR_PALETTE.length];
+  const route = {
+    kind:             'drawn',
+    routeId:          null,
+    filename:         'New Route',
+    color,
+    geojson:          null,
+    bounds:           null,
+    startCoord:       null,
+    endCoord:         null,
+    elevationProfile: [],
+    distanceMiles:    0,
+    gainFt:           0,
+    lossFt:           0,
+    warnings:         [],
+    _waypoints:       [],
+    _segmentCoords:   [],
+    _segmentDetoured: [],
+  };
+  state.routes.push(route);
+  selectRoute(state.routes.length - 1);
 }
 
 function removeRoute(idx) {
   const route = state.routes[idx];
 
-  const srcId = `route-upload-${route.routeId}`;
-  if (map.getLayer(`${srcId}-line`)) map.removeLayer(`${srcId}-line`);
-  if (map.getSource(srcId))          map.removeSource(srcId);
+  if (route.kind === 'drawn') {
+    const permSrc = `route-drawn-${route.routeId}`;
+    if (map.getLayer(`${permSrc}-line`)) map.removeLayer(`${permSrc}-line`);
+    if (map.getSource(permSrc))          map.removeSource(permSrc);
+    if (state.selectedIdx === idx) {
+      map.getSource('waypoints')?.setData(emptyFC());
+      map.getSource('route')?.setData(emptyFC());
+      map.getSource('route-detour')?.setData(emptyFC());
+      drawnStartMarker.remove();
+      drawnEndMarker.remove();
+    }
+  } else {
+    const srcId = `route-upload-${route.routeId}`;
+    if (map.getLayer(`${srcId}-line`)) map.removeLayer(`${srcId}-line`);
+    if (map.getSource(srcId))          map.removeSource(srcId);
+  }
 
   state.routes.splice(idx, 1);
 
@@ -340,17 +578,11 @@ function removeRoute(idx) {
       map.getSource('frames')?.setData(emptyFC());
       elPreviewInfo.classList.add('hidden');
       setPreviewWarnings([]);
-      if (state.drawnRouteId) {
-        state.routeId     = state.drawnRouteId;
-        state.routeSource = 'drawn';
-        state.startCoord  = state.waypoints[0] || null;
-        state.endCoord    = state.waypoints[state.waypoints.length - 1] || null;
-        schedulePreview();
-      } else {
-        state.routeId = null; state.routeSource = null;
-        state.startCoord = null; state.endCoord = null;
-        elBtnGenerate.disabled = true;
-      }
+      state.routeId = null; state.routeSource = null;
+      state.startCoord = null; state.endCoord = null;
+      state.waypoints = []; state.segmentCoords = []; state.segmentDetoured = [];
+      updateDrawDisplay();
+      elBtnGenerate.disabled = true;
     }
   } else if (state.selectedIdx !== null && state.selectedIdx > idx) {
     state.selectedIdx--;
@@ -370,73 +602,207 @@ function renderRouteList() {
     const swatch = document.createElement('div');
     swatch.className = 'route-swatch';
     swatch.style.background = route.color;
+    swatch.addEventListener('click', (e) => { e.stopPropagation(); showColorPicker(swatch, idx); });
 
     const name = document.createElement('span');
     name.className = 'route-item-name';
     name.textContent = route.filename;
     name.title = route.filename;
 
-    const btn = document.createElement('button');
-    btn.className = 'btn-icon';
-    btn.textContent = '✕';
-    btn.title = 'Remove route';
-    btn.addEventListener('click', (e) => { e.stopPropagation(); removeRoute(idx); });
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn-icon btn-edit';
+    editBtn.innerHTML = '<svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M11 2.5l2.5 2.5L5 13.5H2.5V11L11 2.5z"/><path d="M9.5 4l2.5 2.5"/></svg>';
+    editBtn.title = 'Rename';
+    editBtn.addEventListener('click', (e) => { e.stopPropagation(); startRename(item, name, idx); });
+
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'btn-icon';
+    removeBtn.textContent = '✕';
+    removeBtn.title = 'Remove route';
+    removeBtn.addEventListener('click', (e) => { e.stopPropagation(); removeRoute(idx); });
 
     item.appendChild(swatch);
     item.appendChild(name);
-    item.appendChild(btn);
+    item.appendChild(editBtn);
+    item.appendChild(removeBtn);
     item.addEventListener('click', () => selectRoute(idx));
     elRouteList.appendChild(item);
   });
 
+  if (state.routes.length < 5) {
+    const addBtn = document.createElement('div');
+    addBtn.className = 'route-add-btn';
+    addBtn.title = 'Draw a new route';
+    addBtn.textContent = '+';
+    addBtn.addEventListener('click', addDrawnRoute);
+    elRouteList.appendChild(addBtn);
+  }
+
   elRouteCountBadge.textContent = state.routes.length > 0 ? `(${state.routes.length}/5)` : '';
   updateDropZone();
+}
+
+function startRename(item, nameSpan, idx) {
+  const inp = document.createElement('input');
+  inp.className = 'route-item-edit';
+  inp.value = state.routes[idx].filename;
+  inp.maxLength = 80;
+
+  item.replaceChild(inp, nameSpan);
+  inp.focus();
+  inp.select();
+
+  function commit() {
+    const val = inp.value.replace(/[^\w\s\-]/g, '').replace(/\s+/g, ' ').trim();
+    if (val) state.routes[idx].filename = val;
+    renderRouteList();
+    if (elElevName && idx === state.selectedIdx) elElevName.textContent = state.routes[idx].filename;
+  }
+
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter')  { e.preventDefault(); commit(); }
+    if (e.key === 'Escape') { e.preventDefault(); renderRouteList(); }
+    e.stopPropagation();
+  });
+  inp.addEventListener('blur', commit);
+  inp.addEventListener('click', (e) => e.stopPropagation());
 }
 
 function updateDropZone() {
   elDropZone.classList.toggle('hidden', state.routes.length >= 5);
 }
 
+// ── Color picker ───────────────────────────────────────────────────────────
+const _COLOR_PALETTE = [
+  '#e74c3c', '#e67e22', '#f39c12', '#f1c40f',
+  '#2ecc71', '#1abc9c', '#3498db', '#2980b9',
+  '#9b59b6', '#e91e63', '#795548', '#607d8b',
+];
+
+function showColorPicker(swatchEl, idx) {
+  closeColorPicker();
+
+  const popup = document.createElement('div');
+  popup.id = 'color-picker-popup';
+  popup.className = 'color-picker-popup';
+
+  _COLOR_PALETTE.forEach(color => {
+    const dot = document.createElement('button');
+    dot.className = 'color-picker-dot' + (color === state.routes[idx].color ? ' active' : '');
+    dot.style.background = color;
+    dot.title = color;
+    dot.addEventListener('click', (e) => { e.stopPropagation(); applyRouteColor(idx, color); closeColorPicker(); });
+    popup.appendChild(dot);
+  });
+
+  document.body.appendChild(popup);
+
+  const r = swatchEl.getBoundingClientRect();
+  let top = r.bottom + 6;
+  if (top + 90 > window.innerHeight) top = r.top - 96;
+  popup.style.left = Math.max(8, r.left) + 'px';
+  popup.style.top  = top + 'px';
+
+  setTimeout(() => document.addEventListener('click', _closePickerOutside), 0);
+}
+
+function _closePickerOutside(e) {
+  const popup = document.getElementById('color-picker-popup');
+  if (popup && !popup.contains(e.target)) closeColorPicker();
+}
+
+function closeColorPicker() {
+  document.getElementById('color-picker-popup')?.remove();
+  document.removeEventListener('click', _closePickerOutside);
+}
+
+function applyRouteColor(idx, color) {
+  state.routes[idx].color = color;
+  const route = state.routes[idx];
+  if (route.kind === 'drawn') {
+    if (idx === state.selectedIdx) map.setPaintProperty('route-line', 'line-color', color);
+    const permId = `route-drawn-${route.routeId}-line`;
+    if (map.getLayer(permId)) map.setPaintProperty(permId, 'line-color', color);
+  } else {
+    const layerId = `route-upload-${route.routeId}-line`;
+    if (map.getLayer(layerId)) map.setPaintProperty(layerId, 'line-color', color);
+    if (idx === state.selectedIdx) showElevPanel(route);
+  }
+  renderRouteList();
+}
+
 // ── Elevation panel ────────────────────────────────────────────────────────
 function showElevPanel(route) {
   elElevName.textContent = route.filename;
-  const dist = route.distanceMiles.toFixed(1);
-  elElevStats.textContent = `${dist} mi · +${Math.round(route.gainFt)} ft / −${Math.round(route.lossFt)} ft`;
+  const dist = (route.distanceMiles || 0).toFixed(1);
+  elElevStats.textContent = dist > 0
+    ? `${dist} mi · +${Math.round(route.gainFt)} ft / −${Math.round(route.lossFt)} ft`
+    : '';
   elElevPanel.classList.remove('hidden');
+  updateElevTab();
   requestAnimationFrame(() => drawElevationProfile(route));
 }
 
 function hideElevPanel() {
   elElevPanel.classList.add('hidden');
+  updateElevTab();
 }
 
-elElevClose.addEventListener('click', () => {
-  hideElevPanel();
-  if (state.selectedIdx !== null) {
-    const prev = state.routes[state.selectedIdx];
-    if (prev) {
-      map.setPaintProperty(`route-upload-${prev.routeId}-line`, 'line-width', 3);
-      map.setPaintProperty(`route-upload-${prev.routeId}-line`, 'line-opacity', 0.85);
-    }
-    state.selectedIdx = null;
-    startMarker.remove();
-    endMarker.remove();
-    elInputStart.value = '';
-    elInputEnd.value   = '';
-    setEndpointsMode('draw');
-    map.getSource('frames')?.setData(emptyFC());
-    elPreviewInfo.classList.add('hidden');
-    setPreviewWarnings([]);
-    if (state.drawnRouteId) {
-      state.routeId = state.drawnRouteId;
-      state.routeSource = 'drawn';
-    } else {
-      state.routeId = null; state.routeSource = null;
-      elBtnGenerate.disabled = true;
-    }
-    renderRouteList();
+function updateElevTab() {
+  const panelHidden = elElevPanel.classList.contains('hidden');
+  if (!panelHidden) { elElevTab.classList.add('hidden'); return; }
+  const route = state.selectedIdx !== null ? state.routes[state.selectedIdx] : null;
+  const hasData = route && route.elevationProfile && route.elevationProfile.length >= 2;
+  elElevTab.classList.toggle('hidden', !hasData);
+  if (hasData && route) {
+    const dist = (route.distanceMiles || 0).toFixed(1);
+    elElevTabStats.textContent = dist > 0 ? `${dist} mi` : '';
   }
+}
+
+elElevClose.addEventListener('click', () => hideElevPanel());
+
+elElevTab.addEventListener('click', () => {
+  const route = state.selectedIdx !== null ? state.routes[state.selectedIdx] : null;
+  if (route) showElevPanel(route);
 });
+
+async function fetchDrawnRouteElevation(route, coords) {
+  route._elevFetchVer = (route._elevFetchVer || 0) + 1;
+  const myVer = route._elevFetchVer;
+
+  // Show panel with loading state
+  if (state.routes[state.selectedIdx] === route) {
+    elElevName.textContent  = route.filename;
+    elElevStats.textContent = '';
+    elElevFetching.classList.remove('hidden');
+    elElevPanel.classList.remove('hidden');
+    updateElevTab();
+  }
+
+  try {
+    const res = await fetch('/api/elevation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ coordinates: coords }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Elevation fetch failed');
+
+    if (route._elevFetchVer !== myVer) return; // stale response
+
+    route.elevationProfile = data.elevation_profile;
+    route.distanceMiles    = data.total_distance_miles;
+    route.gainFt           = data.gain_ft;
+    route.lossFt           = data.loss_ft;
+
+    if (state.routes[state.selectedIdx] === route) showElevPanel(route);
+  } catch (_err) {
+    // silently ignore — profile will just show "No elevation data"
+  } finally {
+    elElevFetching.classList.add('hidden');
+  }
+}
 
 function drawElevationProfile(route) {
   const ctx  = elElevCanvas.getContext('2d');
@@ -558,7 +924,7 @@ async function addWaypoint(latlon) {
         return;
       } finally {
         state.isFetchingSegment = false;
-        map.getCanvas().style.cursor = state.selectedIdx === null ? 'crosshair' : '';
+        map.getCanvas().style.cursor = _selectedDrawnRoute() ? 'crosshair' : '';
         elDrawFetching.classList.add('hidden');
       }
 
@@ -587,6 +953,8 @@ function undoWaypoint() {
   if (state.segmentCoords.length > 0) {
     scheduleCommit();
   } else {
+    const dr = _selectedDrawnRoute();
+    if (dr) dr.routeId = null;
     state.drawnRouteId = null;
     if (state.routeSource === 'drawn') {
       state.routeId = null; state.routeSource = null;
@@ -617,6 +985,28 @@ function updateDrawDisplay() {
   }));
   map.getSource('waypoints')?.setData({ type: 'FeatureCollection', features });
 
+  // Start pin — appears immediately on first waypoint
+  if (n >= 1) {
+    const s = state.waypoints[0];
+    drawnStartMarker.setLngLat([s[1], s[0]]).addTo(map);
+    elDrawStartCoord.textContent = `${s[0].toFixed(5)}, ${s[1].toFixed(5)}`;
+  } else {
+    drawnStartMarker.remove();
+    elDrawStartCoord.textContent = '—';
+  }
+
+  // End pin — appears after second waypoint
+  if (n >= 2) {
+    const e = state.waypoints[n - 1];
+    drawnEndMarker.setLngLat([e[1], e[0]]).addTo(map);
+    elDrawEndCoord.textContent = `${e[0].toFixed(5)}, ${e[1].toFixed(5)}`;
+  } else {
+    drawnEndMarker.remove();
+    elDrawEndCoord.textContent = '—';
+  }
+
+  elDrawEndpoints.classList.toggle('hidden', n === 0);
+
   if (n > 0) {
     const s = state.segmentCoords.length;
     const d = state.segmentDetoured.filter(Boolean).length;
@@ -630,6 +1020,7 @@ function updateDrawDisplay() {
 
   elBtnUndo.disabled = n === 0 || state.isFetchingSegment;
   elBtnRedo.disabled = state.redoStack.length === 0 || state.isFetchingSegment;
+  elBtnReverseDraw.disabled = state.segmentCoords.length === 0;
 }
 
 function updateRouteLineFromSegments() {
@@ -674,14 +1065,21 @@ async function commitRoute() {
 
     state.drawnRouteId = data.route_id;
 
-    // Only take over as active route if no upload is selected
-    if (state.selectedIdx === null) {
-      state.routeId     = data.route_id;
-      state.routeSource = 'drawn';
-      state.startCoord  = state.waypoints[0];
-      state.endCoord    = state.waypoints[state.waypoints.length - 1];
-      runPreview();
+    const dr = _selectedDrawnRoute();
+    if (dr) {
+      dr.routeId    = data.route_id;
+      dr.bounds     = data.bounds;
+      dr.startCoord = state.waypoints[0];
+      dr.endCoord   = state.waypoints[state.waypoints.length - 1];
     }
+    state.routeId     = data.route_id;
+    state.routeSource = 'drawn';
+    state.startCoord  = state.waypoints[0];
+    state.endCoord    = state.waypoints[state.waypoints.length - 1];
+    runPreview();
+
+    const dr2 = _selectedDrawnRoute();
+    if (dr2) fetchDrawnRouteElevation(dr2, coords);
   } catch (err) {
     setPreviewWarnings([`Failed to save route: ${err.message}`]);
   }
@@ -762,6 +1160,16 @@ function onUploadCoordsChanged() {
   el.addEventListener('change', () => { if (state.routeId) schedulePreview(); });
 });
 document.getElementById('lyr-bw').addEventListener('change', () => { if (state.routeId) schedulePreview(); });
+document.getElementById('lyr-contours').addEventListener('change', (e) => {
+  const vis = e.target.checked ? 'visible' : 'none';
+  ['contours-layer', 'contours-major-layer', 'contours-label-layer'].forEach(id => {
+    if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
+  });
+});
+document.getElementById('lyr-hillshade').addEventListener('change', (e) => {
+  if (map.getLayer('terrain-hillshade'))
+    map.setLayoutProperty('terrain-hillshade', 'visibility', e.target.checked ? 'visible' : 'none');
+});
 
 // ── Preview ────────────────────────────────────────────────────────────────
 function schedulePreview() {
@@ -821,9 +1229,8 @@ document.getElementById('btn-save-gpx').addEventListener('click',     () => trig
 document.getElementById('btn-save-geojson').addEventListener('click', () => triggerExport('geojson'));
 
 function getOutputName() {
-  const raw  = document.getElementById('inp-filename').value.trim();
-  const safe = raw.replace(/[^\w\s\-]/g, '').replace(/\s+/g, ' ').trim();
-  return safe || 'trail_map';
+  const raw = (state.selectedIdx !== null ? state.routes[state.selectedIdx]?.filename : null) || 'trail_map';
+  return raw.replace(/[^\w\s\-]/g, '').replace(/\s+/g, ' ').trim() || 'trail_map';
 }
 
 function triggerExport(fmt) {
@@ -866,6 +1273,7 @@ elBtnGenerate.addEventListener('click', async () => {
 
 // ── Reverse route ──────────────────────────────────────────────────────────
 document.getElementById('btn-reverse-route').addEventListener('click', reverseRoute);
+elBtnReverseDraw.addEventListener('click', reverseRoute);
 
 function reverseRoute() {
   if (!state.routeId) return;
@@ -901,6 +1309,8 @@ function clearDrawing() {
   map.getSource('waypoints')?.setData(emptyFC());
   map.getSource('route')?.setData(emptyFC());
   map.getSource('route-detour')?.setData(emptyFC());
+  drawnStartMarker.remove();
+  drawnEndMarker.remove();
   updateDrawDisplay();
 }
 
@@ -954,6 +1364,9 @@ function showStatus(msg, isError) {
   elGenStatus.classList.remove('hidden');
 }
 
+// Render route list on load so the "+" button is visible immediately
+renderRouteList();
+
 // ── Detour toast ───────────────────────────────────────────────────────────
 let _detourToastTimer = null;
 function showDetourToast() {
@@ -967,4 +1380,79 @@ function showDetourToast() {
   toast.classList.add('visible');
   clearTimeout(_detourToastTimer);
   _detourToastTimer = setTimeout(() => toast.classList.remove('visible'), 6000);
+}
+
+// ── Help tooltip ───────────────────────────────────────────────────────────
+const elHelpTooltip = document.createElement('div');
+elHelpTooltip.id = 'help-tooltip';
+document.body.appendChild(elHelpTooltip);
+
+document.addEventListener('mouseover', (e) => {
+  const tip = e.target.closest('.help-tip');
+  if (!tip) return;
+  elHelpTooltip.textContent = tip.dataset.tooltip || '';
+  elHelpTooltip.classList.add('visible');
+
+  const r  = tip.getBoundingClientRect();
+  const tw = 210;
+  const margin = 8;
+  let left = r.right + margin;
+  if (left + tw > window.innerWidth - margin) left = r.left - tw - margin;
+  left = Math.max(margin, left);
+  let top = r.top + r.height / 2 - 26;
+  top = Math.max(margin, Math.min(top, window.innerHeight - 120));
+  elHelpTooltip.style.left = left + 'px';
+  elHelpTooltip.style.top  = top + 'px';
+});
+
+document.addEventListener('mouseout', (e) => {
+  if (e.target.closest('.help-tip')) elHelpTooltip.classList.remove('visible');
+});
+
+// ── Right-click elevation probe ────────────────────────────────────────────
+const elElevProbe = document.getElementById('elev-probe');
+let _probingElev  = false;
+
+map.getCanvas().addEventListener('contextmenu', (e) => e.preventDefault());
+
+map.getCanvas().addEventListener('mousedown', (e) => {
+  if (e.button !== 2) return;
+  // Do NOT preventDefault — MapLibre's DragRotateHandler needs this for right-click pitch/rotate
+  _probingElev = true;
+  _updateElevProbe(e);
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (_probingElev) _updateElevProbe(e);
+});
+
+window.addEventListener('mouseup', (e) => {
+  if (e.button !== 2 || !_probingElev) return;
+  _probingElev = false;
+  elElevProbe.classList.add('hidden');
+});
+
+function _updateElevProbe(e) {
+  const canvas = map.getCanvas();
+  const rect   = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+  if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
+    elElevProbe.classList.add('hidden');
+    return;
+  }
+  const lngLat = map.unproject([x, y]);
+  const elevM  = map.queryTerrainElevation(lngLat, { exaggerated: false });
+  if (elevM === null) return;
+  const elevFt = Math.round(elevM * 3.28084);
+  elElevProbe.innerHTML =
+    `<span class="elev-probe-ft">${elevFt} ft</span>` +
+    `<span class="elev-probe-m">${Math.round(elevM)} m</span>`;
+  // Position tooltip: right of cursor, flip left if near right edge
+  let left = e.clientX + 16;
+  let top  = e.clientY - 14;
+  if (left + 110 > window.innerWidth) left = e.clientX - 126;
+  elElevProbe.style.left = left + 'px';
+  elElevProbe.style.top  = top  + 'px';
+  elElevProbe.classList.remove('hidden');
 }

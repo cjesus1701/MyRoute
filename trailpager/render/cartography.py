@@ -56,7 +56,7 @@ def draw_route(
     """Draw the route line.  If *direction_dist* (metres from line start) is
     given, a travel-direction arrowhead is placed at that point."""
     xs, ys = line.xy
-    ax.plot(xs, ys, color=color, linewidth=linewidth, zorder=5, solid_capstyle="round")
+    ax.plot(xs, ys, color=color, linewidth=linewidth, zorder=6, solid_capstyle="round")
 
     if direction_dist is not None:
         total = line.length
@@ -74,13 +74,13 @@ def draw_route(
                 lw=linewidth,
                 mutation_scale=14,
             ),
-            zorder=6,
+            zorder=7,
         )
 
 
 def draw_mile_markers(ax: Axes, markers: list[MileMarker], color: str = "#d62728") -> None:
     for m in markers:
-        ax.plot(m.point.x, m.point.y, "o", color=color, markersize=4, zorder=6)
+        ax.plot(m.point.x, m.point.y, "o", color=color, markersize=4, zorder=7)
         ax.annotate(
             f"{m.number:.0f}",
             xy=(m.point.x, m.point.y),
@@ -140,18 +140,18 @@ def draw_pois(
             is_shelter = poi.kind == "shelter"
             fc = "black" if is_shelter else "white"
             ec = "black"
-            ax.plot(x, y, marker, color=fc, markersize=ms, zorder=7,
+            ax.plot(x, y, marker, color=fc, markersize=ms, zorder=8,
                     markeredgecolor=ec, markeredgewidth=1.2)
             label_color = "black"
         else:
-            ax.plot(x, y, marker, color=poi.color, markersize=ms, zorder=7,
+            ax.plot(x, y, marker, color=poi.color, markersize=ms, zorder=8,
                     markeredgecolor="white", markeredgewidth=0.5)
             label_color = poi.color
         if poi.name:
             short = poi.name if len(poi.name) <= 16 else poi.name[:14] + "…"
             ax.annotate(
                 short, xy=(x, y), xytext=(5, 5),
-                textcoords="offset points", fontsize=6, color=label_color, zorder=8,
+                textcoords="offset points", fontsize=6, color=label_color, zorder=9,
                 bbox=dict(boxstyle="round,pad=0.1", facecolor="white", alpha=0.75, linewidth=0),
             )
 
@@ -166,6 +166,7 @@ def draw_boundaries(
     colors: list[str] | None = None,
     labels: list[str] | None = None,
     linestyles: list[str] | None = None,
+    fill_alphas: list[float] | None = None,
 ) -> None:
     if colors is None:
         colors = _BOUNDARY_COLORS
@@ -180,12 +181,17 @@ def draw_boundaries(
         color = colors[i % len(colors)]
         label = labels[i % len(labels)]
         ls    = linestyles[i % len(linestyles)]
+        if fill_alphas:
+            alpha = fill_alphas[i % len(fill_alphas)]
+            # zorder=4 ensures the fill sits above the basemap raster (zorder≈1)
+            # but below the route line (zorder=5) and POI markers (zorder=7+)
+            gdf_proj.plot(ax=ax, color=color, edgecolor="none", linewidth=0, alpha=alpha, zorder=4)
         gdf_proj.plot(
             ax=ax,
             facecolor="none",
             edgecolor=color,
             linewidth=1.2,
             linestyle=ls,
-            zorder=3,
+            zorder=5,
             label=label,
         )

@@ -52,13 +52,13 @@ def render_detail_page(
 
     if boundaries and (settings.layers.usfs_boundary or settings.layers.nps_boundary):
         bw_colors = ["#000000", "#444444"] if bw else boundary_colors
-        bw_styles  = ["--", ":"]
         draw_boundaries(
             ax, boundaries,
             target_epsg=settings.epsg,
             colors=bw_colors,
             labels=boundary_labels,
-            linestyles=bw_styles if bw else None,
+            linestyles=["--", ":"] if bw else None,
+            fill_alphas=None if bw else [0.22, 0.17],
         )
 
     route_color = "#000000" if bw else "#d62728"

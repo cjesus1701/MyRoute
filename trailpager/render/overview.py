@@ -58,6 +58,7 @@ def render_overview_page(
             colors=bw_colors,
             labels=boundary_labels,
             linestyles=bw_styles if bw else None,
+            fill_alphas=None if bw else [0.22, 0.17],
         )
 
     route_color = "#000000" if bw else "#d62728"

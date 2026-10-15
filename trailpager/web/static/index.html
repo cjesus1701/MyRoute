@@ -11,6 +11,101 @@
   <div id="sidebar">
     <div id="sidebar-header">
       <span class="logo">MyRoute</span>
+      <button id="btn-settings" class="btn-icon" title="Map settings &amp; layers">
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
+          <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
+        </svg>
+      </button>
+    </div>
+
+    <!-- Settings drawer (overlays sidebar-body when open) -->
+    <div id="settings-drawer" class="hidden">
+
+      <!-- ── Map settings ──────────────────────────────── -->
+      <section class="panel" id="panel-settings">
+        <h2>Map settings</h2>
+        <div class="field-row">
+          <label>Scale <span class="help-tip" data-tooltip="How much area fits on each PDF page. 1:24,000 is USGS topo standard and shows the most detail. 1:100,000 covers more ground per page.">?</span></label>
+          <select id="sel-scale">
+            <option value="24000">1 : 24,000</option>
+            <option value="50000">1 : 50,000</option>
+            <option value="100000">1 : 100,000</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label>Paper <span class="help-tip" data-tooltip="Output page size and orientation. Letter landscape is standard for US printers. A4 for international printing.">?</span></label>
+          <select id="sel-paper">
+            <option value="letter_landscape">Letter landscape</option>
+            <option value="letter_portrait">Letter portrait</option>
+            <option value="a4_landscape">A4 landscape</option>
+            <option value="a4_portrait">A4 portrait</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <label>Overlap <span class="help-tip" data-tooltip="How many meters each page shares with the next. More overlap makes it easier to orient yourself when switching between pages.">?</span></label>
+          <input type="number" id="inp-overlap" value="500" min="250" max="2000" step="50"> m
+        </div>
+        <div class="field-row">
+          <label>UTM zone <span class="help-tip" data-tooltip="Universal Transverse Mercator zone used for the coordinate grid. Most of the eastern US is zone 17–18. Check a UTM zone map if unsure.">?</span></label>
+          <input type="number" id="inp-utm-zone" value="17" min="1" max="60">
+        </div>
+      </section>
+
+      <!-- ── Layers ────────────────────────────────────── -->
+      <section class="panel" id="panel-layers">
+        <h2>Layers</h2>
+        <div class="toggle-row">
+          <input type="checkbox" id="lyr-topo" checked>
+          <label for="lyr-topo">Topo basemap</label>
+          <span class="help-tip" data-tooltip="OpenStreetMap topographic tiles shown as the map background. Disable for a blank map or faster rendering.">?</span>
+        </div>
+        <div class="toggle-row">
+          <input type="checkbox" id="lyr-usfs" checked>
+          <label for="lyr-usfs">USFS boundary</label>
+          <span class="help-tip" data-tooltip="US Forest Service land boundaries outlined and shaded green. Helps identify National Forest areas on the map.">?</span>
+        </div>
+        <div class="toggle-row">
+          <input type="checkbox" id="lyr-nps" checked>
+          <label for="lyr-nps">NPS boundary</label>
+          <span class="help-tip" data-tooltip="National Park Service land boundaries outlined and shaded blue. Helps identify National Park areas on the map.">?</span>
+        </div>
+        <div class="toggle-row">
+          <input type="checkbox" id="lyr-miles" checked>
+          <label for="lyr-miles">Mile markers</label>
+          <span class="help-tip" data-tooltip="Numbered dots placed every mile along the route, so you can quickly gauge your position on the map.">?</span>
+        </div>
+        <div class="toggle-row">
+          <input type="checkbox" id="lyr-grid" checked>
+          <label for="lyr-grid">UTM grid</label>
+          <span class="help-tip" data-tooltip="1 km coordinate grid lines with labels on all page edges. Useful for navigation with a compass or GPS device.">?</span>
+        </div>
+        <div class="toggle-row">
+          <input type="checkbox" id="lyr-elev" checked>
+          <label for="lyr-elev">Elevation profile</label>
+          <span class="help-tip" data-tooltip="An elevation chart printed at the bottom of each detail page, showing the terrain profile for that page's section of trail.">?</span>
+        </div>
+        <div class="toggle-row">
+          <input type="checkbox" id="lyr-pois" checked>
+          <label for="lyr-pois">Shelters &amp; water</label>
+          <span class="help-tip" data-tooltip="Trail shelters (triangles) and water sources (circles) sourced from OpenStreetMap, shown with short name labels.">?</span>
+        </div>
+        <div class="toggle-row">
+          <input type="checkbox" id="lyr-contours" checked>
+          <label for="lyr-contours">Contour lines</label>
+          <span class="help-tip" data-tooltip="Elevation contour lines every 100 ft, with labeled index lines every 500 ft. Appear when zoomed in to the 1000 ft scale or closer.">?</span>
+        </div>
+        <div class="toggle-row">
+          <input type="checkbox" id="lyr-hillshade" checked>
+          <label for="lyr-hillshade">Terrain shading</label>
+          <span class="help-tip" data-tooltip="Subtle hillshade derived from elevation data, making ridges and valleys visible. Also enables right-click dragging to probe elevation anywhere on the map.">?</span>
+        </div>
+        <div class="toggle-row" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px">
+          <input type="checkbox" id="lyr-bw">
+          <label for="lyr-bw">Black &amp; white</label>
+          <span class="help-tip" data-tooltip="Removes all color for grayscale printing. Boundary fills are hidden and outlines switch to dashed lines. Use this for cheaper printer ink.">?</span>
+        </div>
+      </section>
+
     </div>
 
     <div id="sidebar-body">
@@ -38,9 +133,6 @@
             <span>Loading…</span>
           </div>
         </div>
-
-        <div class="or-divider"><span>or</span></div>
-        <p class="map-hint">Click waypoints on the map to draw a route</p>
 
         <div id="upload-warnings" class="warning-box hidden"></div>
       </section>
@@ -92,10 +184,25 @@
           <div id="draw-stats" class="hidden">
             <span id="draw-wp-count"></span>
           </div>
-          <div class="draw-btn-row">
+
+          <div id="draw-endpoints" class="hidden" style="margin-top:8px">
+            <div class="coord-row">
+              <div class="coord-dot start-dot"></div>
+              <label>Start</label>
+              <span id="draw-start-coord" class="coord-display">—</span>
+            </div>
+            <div class="coord-row" style="margin-bottom:0">
+              <div class="coord-dot end-dot"></div>
+              <label>End</label>
+              <span id="draw-end-coord" class="coord-display">—</span>
+            </div>
+          </div>
+
+          <div class="draw-btn-row" style="margin-top:8px">
             <button id="btn-undo" class="btn-secondary" disabled>↩ Undo <kbd>Ctrl+Z</kbd></button>
             <button id="btn-redo" class="btn-secondary" disabled>↪ Redo <kbd>Ctrl+Y</kbd></button>
           </div>
+          <button id="btn-reverse-drawn" class="btn-secondary" style="margin-top:6px;width:100%" disabled>⇄ Reverse route</button>
           <div id="draw-fetching" class="segment-spinner hidden">
             <div class="spinner-dot"></div> Routing segment…
           </div>
@@ -110,55 +217,8 @@
         <div id="preview-warnings" class="warning-box hidden"></div>
       </section>
 
-      <!-- ── Map settings ──────────────────────────────── -->
-      <section class="panel" id="panel-settings">
-        <h2>Map settings</h2>
-        <div class="field-row">
-          <label>Scale</label>
-          <select id="sel-scale">
-            <option value="24000">1 : 24,000</option>
-            <option value="50000">1 : 50,000</option>
-            <option value="100000">1 : 100,000</option>
-          </select>
-        </div>
-        <div class="field-row">
-          <label>Paper</label>
-          <select id="sel-paper">
-            <option value="letter_landscape">Letter landscape</option>
-            <option value="letter_portrait">Letter portrait</option>
-            <option value="a4_landscape">A4 landscape</option>
-            <option value="a4_portrait">A4 portrait</option>
-          </select>
-        </div>
-        <div class="field-row">
-          <label>Overlap</label>
-          <input type="number" id="inp-overlap" value="500" min="250" max="2000" step="50"> m
-        </div>
-        <div class="field-row">
-          <label>UTM zone</label>
-          <input type="number" id="inp-utm-zone" value="17" min="1" max="60">
-        </div>
-      </section>
-
-      <!-- ── Layers ────────────────────────────────────── -->
-      <section class="panel" id="panel-layers">
-        <h2>Layers</h2>
-        <label class="toggle-row"><input type="checkbox" id="lyr-topo"  checked> Topo basemap</label>
-        <label class="toggle-row"><input type="checkbox" id="lyr-usfs"  checked> USFS boundary</label>
-        <label class="toggle-row"><input type="checkbox" id="lyr-nps"   checked> NPS boundary</label>
-        <label class="toggle-row"><input type="checkbox" id="lyr-miles" checked> Mile markers</label>
-        <label class="toggle-row"><input type="checkbox" id="lyr-grid"  checked> UTM grid</label>
-        <label class="toggle-row"><input type="checkbox" id="lyr-elev"  checked> Elevation profile</label>
-        <label class="toggle-row"><input type="checkbox" id="lyr-pois"  checked> Shelters &amp; water</label>
-        <label class="toggle-row" style="margin-top:10px;border-top:1px solid var(--border);padding-top:10px"><input type="checkbox" id="lyr-bw"> Black &amp; white printing</label>
-      </section>
-
       <!-- ── Generate ──────────────────────────────────── -->
       <section class="panel" id="panel-generate">
-        <div class="field-row">
-          <label>File name</label>
-          <input type="text" id="inp-filename" placeholder="trail_map" maxlength="80" style="flex:1">
-        </div>
         <button id="btn-generate" class="btn-primary" disabled>Generate PDF</button>
         <div id="gen-progress" class="hidden"><div id="gen-progress-bar"></div></div>
         <div id="gen-status"   class="hidden"></div>
@@ -174,9 +234,21 @@
     <div id="elev-header">
       <span id="elev-name"></span>
       <span id="elev-stats"></span>
-      <button id="elev-close" class="btn-icon" title="Close">✕</button>
+      <div id="elev-fetching" class="elev-fetching hidden">
+        <div class="spinner-dot"></div><span>Fetching elevation…</span>
+      </div>
+      <button id="elev-close" class="btn-icon" title="Hide">✕</button>
     </div>
     <canvas id="elev-canvas"></canvas>
+  </div>
+
+  <!-- Elevation tab (re-shows panel when it's been closed) -->
+  <div id="elev-tab" class="hidden">
+    <svg viewBox="0 0 16 14" width="13" height="11" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="1,12 5,6 9,8 14,2"/>
+    </svg>
+    <span>Elevation</span>
+    <span id="elev-tab-stats"></span>
   </div>
 
   <!-- Pick-mode banner (upload mode only) -->
@@ -184,6 +256,9 @@
     <span id="pick-label">Click on the map to set start point</span>
     <button id="btn-cancel-pick">Cancel</button>
   </div>
+
+  <!-- Right-click elevation probe tooltip -->
+  <div id="elev-probe" class="hidden"></div>
 
   <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
   <script src="/static/app.js"></script>
