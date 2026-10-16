@@ -270,6 +270,7 @@ const elElevPanel          = document.getElementById('elev-panel');
 const elElevName           = document.getElementById('elev-name');
 const elElevStats          = document.getElementById('elev-stats');
 const elElevCanvas         = document.getElementById('elev-canvas');
+const elElevHydration      = document.getElementById('elev-hydration');
 const elElevClose          = document.getElementById('elev-close');
 const elElevFetching       = document.getElementById('elev-fetching');
 const elElevTab            = document.getElementById('elev-tab');
@@ -746,12 +747,61 @@ function applyRouteColor(idx, color) {
 }
 
 // ── Elevation panel ────────────────────────────────────────────────────────
+
+// Estimate hike time (Naismith's Rule) and per-segment hydration need
+function calcHydration(route) {
+  const prof = route.elevationProfile;
+  const distMiles = route.distanceMiles || 0;
+  if (distMiles < 0.1) return null;
+
+  let totalTimeH = 0, totalWaterL = 0;
+
+  if (prof && prof.length >= 2) {
+    for (let i = 1; i < prof.length; i++) {
+      const distM    = prof[i].distance_m - prof[i - 1].distance_m;
+      const segMiles = distM / 1609.344;
+      const segGain  = Math.max(0, prof[i].elevation_ft - prof[i - 1].elevation_ft);
+      const segTime  = segMiles / 3.0 + segGain / 2000; // Naismith hrs
+      // grade as % (rise/run × 100)
+      const grade = distM > 0 ? (segGain / (distM * 3.28084)) * 100 : 0;
+      // sweat rate: 0.4 L/hr easy → 0.9 L/hr very steep
+      const rate = grade > 12 ? 0.90 : grade > 7 ? 0.75 : grade > 3 ? 0.55 : 0.40;
+      totalTimeH  += segTime;
+      totalWaterL += segTime * rate;
+    }
+  } else {
+    const gainFt   = route.gainFt || 0;
+    totalTimeH     = distMiles / 3.0 + gainFt / 2000;
+    const avgGrade = distMiles > 0 ? gainFt / (distMiles * 5280) * 100 : 0;
+    const rate     = avgGrade > 12 ? 0.90 : avgGrade > 7 ? 0.75 : avgGrade > 3 ? 0.55 : 0.40;
+    totalWaterL    = totalTimeH * rate;
+  }
+
+  if (totalTimeH <= 0) return null;
+  return { timeH: totalTimeH, perHourL: totalWaterL / totalTimeH, totalL: totalWaterL };
+}
+
+function _fmtHikeTime(h) {
+  const hrs = Math.floor(h), mins = Math.round((h - hrs) * 60);
+  return hrs > 0 && mins > 0 ? `${hrs}h ${mins}m` : hrs > 0 ? `${hrs}h` : `${mins}m`;
+}
+
 function showElevPanel(route) {
   elElevName.textContent = route.filename;
   const dist = (route.distanceMiles || 0).toFixed(1);
   elElevStats.textContent = dist > 0
     ? `${dist} mi · +${Math.round(route.gainFt)} ft / −${Math.round(route.lossFt)} ft`
     : '';
+
+  const hyd = calcHydration(route);
+  if (hyd) {
+    elElevHydration.textContent =
+      `Est. ~${_fmtHikeTime(hyd.timeH)} · water ~${hyd.perHourL.toFixed(1)} L/hr · ~${hyd.totalL.toFixed(1)} L total`;
+    elElevHydration.classList.remove('hidden');
+  } else {
+    elElevHydration.classList.add('hidden');
+  }
+
   elElevPanel.classList.remove('hidden');
   updateElevTab();
   requestAnimationFrame(() => drawElevationProfile(route));
@@ -791,6 +841,7 @@ async function fetchDrawnRouteElevation(route, coords) {
   if (state.routes[state.selectedIdx] === route) {
     elElevName.textContent  = route.filename;
     elElevStats.textContent = '';
+    elElevHydration.classList.add('hidden');
     elElevFetching.classList.remove('hidden');
     elElevPanel.classList.remove('hidden');
     updateElevTab();

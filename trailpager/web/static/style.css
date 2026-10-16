@@ -178,9 +178,13 @@ html, body { height: 100%; overflow: hidden; font-family: system-ui, sans-serif;
 }
 #elev-panel.hidden { display: none; }
 #elev-header {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 6px 12px; flex-shrink: 0;
   border-bottom: 1px solid var(--border);
+}
+#elev-hydration {
+  width: 100%; padding: 1px 0 4px;
+  font-size: 10.5px; color: var(--text-dim); line-height: 1.4;
 }
 #elev-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
 #elev-stats { font-size: 11px; color: var(--text-dim); white-space: nowrap; flex: 1; }
